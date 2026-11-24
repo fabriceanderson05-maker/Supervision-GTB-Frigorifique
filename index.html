@@ -1,0 +1,2442 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Supervision GTB Frigorifique Réversible — Dexforma</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <!-- Google Fonts : Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            bms: {
+              bg: '#0b0f17',
+              card: '#111827',
+              panel: '#161f32',
+              border: '#1e293b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0b0f17;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar industrielle discrète */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0f17;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Animations tuyauteries SVG */
+    @keyframes flowForward {
+      from { stroke-dashoffset: 36; }
+      to { stroke-dashoffset: 0; }
+    }
+    @keyframes flowReverse {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: 36; }
+    }
+    @keyframes spinRotor {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes pulseAlarm {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+      50% { box-shadow: 0 0 18px 4px rgba(239, 68, 68, 0.35); }
+    }
+
+    .pipe-flow-fwd {
+      stroke-dasharray: 10 8;
+      animation: flowForward var(--flow-speed, 1.2s) linear infinite;
+    }
+    .pipe-flow-rev {
+      stroke-dasharray: 10 8;
+      animation: flowReverse var(--flow-speed, 1.2s) linear infinite;
+    }
+    .pipe-stopped {
+      stroke-dasharray: 4 6;
+      animation: none;
+      opacity: 0.45;
+    }
+
+    .rotor-spin {
+      transform-origin: center;
+      transform-box: fill-box;
+      animation: spinRotor var(--rotor-speed, 1.5s) linear infinite;
+    }
+    .rotor-stop {
+      animation: none;
+    }
+
+    .alarm-glow {
+      animation: pulseAlarm 1.5s infinite;
+    }
+
+    .svg-organ {
+      cursor: pointer;
+      transition: filter 0.2s ease, transform 0.2s ease;
+    }
+    .svg-organ:hover {
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.55));
+    }
+    .svg-organ.selected-organ {
+      filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.85));
+    }
+
+    /* Custom range slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      background: #1e293b;
+      height: 6px;
+      border-radius: 999px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #06b6d4;
+      cursor: pointer;
+      border: 2px solid #0b0f17;
+    }
+
+    /* Styles d'impression PDF */
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #0f172a !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      #printReportArea {
+        display: block !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        padding: 0 !important;
+      }
+      #appMainContainer {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- CONTENEUR PRINCIPAL APPLICATION -->
+  <div id="appMainContainer" class="flex-1 flex flex-col">
+
+    <!-- BANDEAU D'ALERTE CRITIQUE (Si défaut actif) -->
+    <div id="criticalBanner" class="hidden bg-red-950/90 border-b border-red-500/60 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 alarm-glow">
+      <div class="flex items-center gap-3">
+        <span class="flex h-3 w-3 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+        </span>
+        <span class="font-mono text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40">ARRÊT SÉCURITÉ GROUPE</span>
+        <p id="criticalBannerText" class="text-sm font-medium text-red-100">Défaut critique détecté sur l'installation frigorifique.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="resetFaultCondition()" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition">
+          1. Corriger cause physique
+        </button>
+        <button onclick="acknowledgeAndResetAlarms()" class="px-3 py-1 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow transition">
+          2. Acquitter & Réarmer GTB
+        </button>
+      </div>
+    </div>
+
+    <!-- HEADER INDUSTRIEL GTB -->
+    <header class="bg-[#111827] border-b border-slate-800 sticky top-0 z-30 shadow-lg shadow-black/40">
+      <div class="max-w-[1600px] mx-auto px-4 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+        
+        <!-- Identité & Statut Global -->
+        <div class="flex items-center justify-between sm:justify-start gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/40 flex items-center justify-center shrink-0">
+              <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m0-18l-3 3m3-3l3 3m-3 15l-3-3m3 3l3-3M3 12h18M3 12l3-3m-3 3l3 3m15-3l-3-3m3 3l-3 3"/>
+              </svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">Supervision GTB Frigorifique Réversible — <span class="text-cyan-400">Dexforma</span></h1>
+                <span class="hidden md:inline-block font-mono text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">PAC AIR/EAU R32 • 240 kW</span>
+              </div>
+              <div class="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
+                <span id="liveClock" class="font-mono text-slate-300">--:--:--</span>
+                <span>•</span>
+                <span id="globalStatusBadge" class="inline-flex items-center gap-1.5 font-semibold text-emerald-400">
+                  <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  EN SERVICE NOMINAL
+                </span>
+                <span class="hidden sm:inline">•</span>
+                <span id="activeRegimeLabel" class="hidden sm:inline font-mono text-cyan-400">CYCLE FROID (EER)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contrôles Globaux : Température Extérieure, Régime, Mode Exploitation, Actions -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          
+          <!-- Curseur Température Extérieure -->
+          <div class="bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 flex items-center gap-2.5">
+            <div class="flex flex-col">
+              <span class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">T° Extérieure</span>
+              <span id="extTempDisplay" class="font-mono text-sm font-bold text-cyan-400">+28.0 °C</span>
+            </div>
+            <input id="extTempSlider" type="range" min="-10" max="40" step="0.5" value="28" class="w-24 sm:w-28" title="Simuler la température extérieure" />
+          </div>
+
+          <!-- Sélecteur de Régime Thermique (Inversion de Cycle) -->
+          <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-1 flex items-center gap-1">
+            <button id="btnModeCool" onclick="setThermalMode('COOL')" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+              <span>❄</span> Froid
+            </button>
+            <button id="btnModeHeat" onclick="setThermalMode('HEAT')" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-400 hover:text-slate-200">
+              <span>🔥</span> Chaud
+            </button>
+            <button id="btnModeAuto" onclick="setThermalMode('AUTO')" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-400 hover:text-slate-200">
+              <span>⇄</span> Auto
+            </button>
+          </div>
+
+          <!-- Sélecteur Mode d'Exploitation Bâtiment -->
+          <div class="bg-[#0b0f17] border border-slate-800 rounded-xl px-2.5 py-1 flex flex-col">
+            <label for="buildingModeSelect" class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Exploitation Bâtiment</label>
+            <select id="buildingModeSelect" onchange="setBuildingMode(this.value)" class="bg-transparent text-xs font-semibold text-slate-200 focus:outline-none cursor-pointer">
+              <option value="CONFORT" class="bg-slate-900">Confort (Nominal 100%)</option>
+              <option value="NUIT" class="bg-slate-900">Nuit / Inoccupé (Éco)</option>
+              <option value="WEEKEND" class="bg-slate-900">Week-end / Jours fériés</option>
+              <option value="DEROGATION" class="bg-slate-900">Dérogation / Pic de charge</option>
+            </select>
+          </div>
+
+          <!-- Bouton Paramètres -->
+          <button onclick="toggleSettingsModal(true)" class="px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition" title="Paramètres & Consignes GTB">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span class="hidden sm:inline">Consignes</span>
+          </button>
+
+          <!-- Bouton Export Rapport PDF -->
+          <button onclick="exportInterventionPDF()" class="px-3 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-xs font-semibold text-blue-300 flex items-center gap-1.5 transition" title="Générer un rapport d'intervention PDF">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <span>Rapport PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- NAVIGATION PAR ONGLETS -->
+      <div class="max-w-[1600px] mx-auto px-4 border-t border-slate-800/80 flex items-center justify-between overflow-x-auto">
+        <nav class="flex items-center gap-1 py-1.5">
+          <button id="tabBtnSupervision" onclick="switchTab('supervision')" class="px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-800 text-cyan-400 border border-slate-700/80 flex items-center gap-2 whitespace-nowrap transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+            1. Synoptique & Sécurité Frigo
+          </button>
+          <button id="tabBtnEnergy" onclick="switchTab('energy')" class="px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+            2. Courbes & Analyse Énergétique
+          </button>
+          <button id="tabBtnTraining" onclick="switchTab('training')" class="px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            3. Cas Pratiques / Formation (10)
+            <span id="trainingScorePill" class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">0/10</span>
+          </button>
+        </nav>
+
+        <!-- Résumé rapide des consignes actives -->
+        <div class="hidden lg:flex items-center gap-4 text-xs font-mono text-slate-400 py-1.5">
+          <span>Consigne Eau : <strong id="headerWaterSetpoint" class="text-cyan-400">7.0 °C</strong></span>
+          <span>Départ / Retour : <strong id="headerWaterTemps" class="text-slate-200">7.0 / 12.0 °C</strong></span>
+          <span>ΔT : <strong id="headerDeltaT" class="text-emerald-400">5.0 K</strong></span>
+          <span>COP/EER : <strong id="headerCop" class="text-amber-400">3.85</strong></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENU PRINCIPAL -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 space-y-4">
+
+      <!-- ===================================================================== -->
+      <!-- ONGLET 1 : SUPERVISION, SYNOPTIQUE ANIMÉ & SÉCURITÉ FRIGORIFIQUE      -->
+      <!-- ===================================================================== -->
+      <section id="viewSupervision" class="space-y-4">
+        
+        <!-- Grille Supérieure : Synoptique SVG (8 cols) + Panneau Inspection Organe (4 cols) -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+          
+          <!-- CARTE SYNOPTIQUE INTERACTIF -->
+          <div class="xl:col-span-8 bg-[#111827] border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+              <div>
+                <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                  Synoptique Thermodynamique & Hydraulique Réversible
+                </h2>
+                <p class="text-xs text-slate-400 mt-0.5">Cliquez sur un organe (compresseur, vanne 4 voies, échangeurs, détendeur, pompe) pour inspecter ses télémesures.</p>
+              </div>
+              
+              <!-- Légende des états fluide -->
+              <div class="flex flex-wrap items-center gap-3 text-[11px] font-mono bg-[#0b0f17] px-3 py-1.5 rounded-xl border border-slate-800">
+                <span class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-red-500"></span>Gaz Chaud HP</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-amber-400"></span>Liquide HP</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-cyan-400"></span>Diphasique BP</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-blue-500"></span>Vapeur BP</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-1.5 rounded bg-emerald-400"></span>Eau Réseau</span>
+              </div>
+            </div>
+
+            <!-- ZONE SVG RESPONSIVE -->
+            <div class="relative w-full overflow-x-auto my-2 bg-[#0b0f17] rounded-xl border border-slate-800/90 p-2">
+              <svg id="bmsSynopticSvg" viewBox="0 0 980 500" class="w-full h-auto min-w-[760px] select-none">
+                <defs>
+                  <!-- Dégradés échangeurs -->
+                  <linearGradient id="airCoilGradCool" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ef4444" stop-opacity="0.25"/>
+                    <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.25"/>
+                  </linearGradient>
+                  <linearGradient id="airCoilGradHeat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
+                    <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.25"/>
+                  </linearGradient>
+                  <linearGradient id="plateHxGradCool" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.3"/>
+                  </linearGradient>
+                  <linearGradient id="plateHxGradHeat" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#ef4444" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="#f97316" stop-opacity="0.3"/>
+                  </linearGradient>
+                </defs>
+
+                <!-- QUADRILLAGE FOND INDUSTRIEL -->
+                <g stroke="#1e293b" stroke-width="0.6" opacity="0.45">
+                  <line x1="0" y1="100" x2="980" y2="100"/>
+                  <line x1="0" y1="200" x2="980" y2="200"/>
+                  <line x1="0" y1="300" x2="980" y2="300"/>
+                  <line x1="0" y1="400" x2="980" y2="400"/>
+                  <line x1="200" y1="0" x2="200" y2="500"/>
+                  <line x1="400" y1="0" x2="400" y2="500"/>
+                  <line x1="600" y1="0" x2="600" y2="500"/>
+                  <line x1="800" y1="0" x2="800" y2="500"/>
+                </g>
+
+                <!-- ENCADREMENTS ZONES FONCTIONNELLES -->
+                <rect x="16" y="16" width="600" height="468" rx="14" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="6 4"/>
+                <text x="30" y="38" fill="#64748b" font-size="11" font-family="JetBrains Mono" font-weight="700">CIRCUIT FRIGORIFIQUE RÉVERSIBLE (R32)</text>
+
+                <rect x="632" y="16" width="332" height="468" rx="14" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="6 4"/>
+                <text x="646" y="38" fill="#64748b" font-size="11" font-family="JetBrains Mono" font-weight="700">BOUCLE HYDRAULIQUE SECONDAIRE</text>
+
+                <!-- ========================================================= -->
+                <!-- TUYAUTERIES FRIGORIFIQUES (Fonds statiques + flux animés) -->
+                <!-- ========================================================= -->
+
+                <!-- 1. Refoulement Compresseur (sommet x=305, y=167) -> Vanne 4 Voies (orifice haut x=425, y=82) -->
+                <path d="M 305 167 L 305 66 L 425 66 L 425 82" fill="none" stroke="#3f161b" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path id="pipeDischarge" d="M 305 167 L 305 66 L 425 66 L 425 82" fill="none" stroke="#ef4444" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" class="pipe-flow-fwd"/>
+
+                <!-- 2. Vanne 4 Voies (voie gauche x=395, y=142) <-> Échangeur Air Extérieur (sommet x=150, y=165) -->
+                <path d="M 395 142 L 395 162 L 245 162 L 245 140 L 150 140 L 150 165" fill="none" stroke="#281d18" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path id="pipe4WayToAir" d="M 395 142 L 395 162 L 245 162 L 245 140 L 150 140 L 150 165" fill="none" stroke="#ef4444" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" class="pipe-flow-fwd"/>
+
+                <!-- 3. Échangeur Air Extérieur (bas x=150, y=325) <-> Détendeur EEV (gauche x=365, y=415) -->
+                <path d="M 150 325 L 150 415 L 365 415" fill="none" stroke="#2d2410" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path id="pipeAirToEev" d="M 150 325 L 150 415 L 365 415" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" class="pipe-flow-fwd"/>
+
+                <!-- 4. Détendeur EEV (droite x=435, y=415) <-> Échangeur à Plaques (bas x=555, y=325) -->
+                <path d="M 435 415 L 555 415 L 555 325" fill="none" stroke="#0c2d36" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path id="pipeEevToPlate" d="M 435 415 L 555 415 L 555 325" fill="none" stroke="#06b6d4" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" class="pipe-flow-fwd"/>
+
+                <!-- 5. Échangeur à Plaques (sommet x=555, y=165) <-> Vanne 4 Voies (voie droite x=455, y=142) -->
+                <path d="M 555 165 L 555 152 L 455 152 L 455 142" fill="none" stroke="#132644" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path id="pipePlateTo4Way" d="M 555 165 L 555 152 L 455 152 L 455 142" fill="none" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" class="pipe-flow-fwd"/>
+
+                <!-- 6. Aspiration Directe : Vanne 4 Voies (voie centrale x=425, y=142) -> Compresseur (flanc droit x=331, y=232) -->
+                <path d="M 425 142 L 425 232 L 331 232" fill="none" stroke="#132644" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path id="pipe4WayToSuction" d="M 425 142 L 425 232 L 331 232" fill="none" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" class="pipe-flow-fwd"/>
+
+                <!-- ========================================================= -->
+                <!-- ORGANE 1 : ÉCHANGEUR AIR EXTÉRIEUR (BATTERIE AILETTES)    -->
+                <!-- ========================================================= -->
+                <g id="organ_air_coil" class="svg-organ" onclick="selectOrgan('air_coil')">
+                  <rect id="airCoilRect" x="108" y="165" width="84" height="160" rx="10" fill="url(#airCoilGradCool)" stroke="#475569" stroke-width="2"/>
+                  <!-- Ailettes verticales -->
+                  <g stroke="#64748b" stroke-width="1.2" opacity="0.65">
+                    <line x1="122" y1="175" x2="122" y2="315"/>
+                    <line x1="136" y1="175" x2="136" y2="315"/>
+                    <line x1="150" y1="175" x2="150" y2="315"/>
+                    <line x1="164" y1="175" x2="164" y2="315"/>
+                    <line x1="178" y1="175" x2="178" y2="315"/>
+                  </g>
+                  <!-- Ventilateur supérieur -->
+                  <circle cx="72" cy="210" r="18" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+                  <g id="fan1Blades" class="rotor-spin">
+                    <path d="M 72 195 L 75 210 L 72 225 L 69 210 Z" fill="#38bdf8"/>
+                    <path d="M 57 210 L 72 207 L 87 210 L 72 213 Z" fill="#38bdf8"/>
+                  </g>
+                  <!-- Ventilateur inférieur -->
+                  <circle cx="72" cy="280" r="18" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+                  <g id="fan2Blades" class="rotor-spin">
+                    <path d="M 72 265 L 75 280 L 72 295 L 69 280 Z" fill="#38bdf8"/>
+                    <path d="M 57 280 L 72 277 L 87 280 L 72 283 Z" fill="#38bdf8"/>
+                  </g>
+
+                  <!-- Flèches échange thermique air extérieur -->
+                  <g id="airHeatArrows">
+                    <text id="airHeatLabel" x="32" y="152" fill="#f97316" font-size="10" font-family="JetBrains Mono" font-weight="700">REJET CHALEUR ↑</text>
+                  </g>
+
+                  <text x="150" y="346" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">Batterie Air Ext.</text>
+                  <text id="svgAirCoilRole" x="150" y="360" text-anchor="middle" fill="#f97316" font-size="10" font-family="JetBrains Mono">CONDENSEUR</text>
+                </g>
+
+                <!-- ========================================================= -->
+                <!-- ORGANE 2 : COMPRESSEUR SCROLL HERMÉTIQUE VERTICAL         -->
+                <!-- ========================================================= -->
+                <g id="organ_compressor" class="svg-organ" onclick="selectOrgan('compressor')">
+                  <!-- Piquage Refoulement HP au sommet -->
+                  <rect x="299" y="167" width="12" height="8" rx="2" fill="#475569"/>
+                  <!-- Piquage Aspiration BP sur flanc droit bas -->
+                  <rect x="323" y="226" width="8" height="12" rx="2" fill="#475569"/>
+
+                  <!-- Carcasse verticale cylindrique hermétique avec dôme bombé (y=173 à y=246) -->
+                  <path d="M 284 191 C 284 173, 326 173, 326 191 L 326 244 C 326 248, 284 248, 284 244 Z" fill="#161f32" stroke="#38bdf8" stroke-width="2.2"/>
+                  <!-- Soudures supérieure et inférieure du corps hermétique -->
+                  <line x1="285" y1="191" x2="325" y2="191" stroke="#334155" stroke-width="1.2"/>
+                  <line x1="285" y1="238" x2="325" y2="238" stroke="#334155" stroke-width="1.2"/>
+
+                  <!-- Boîtier électrique latéral gauche & voyant d'état -->
+                  <rect x="275" y="198" width="9" height="22" rx="2" fill="#0f172a" stroke="#64748b" stroke-width="1.3"/>
+                  <circle id="compStatusLed" cx="279.5" cy="204" r="2.2" fill="#10b981"/>
+
+                  <!-- Chambre interne de compression Scroll (spirale orbitale / excentrique) -->
+                  <circle cx="305" cy="214" r="14" fill="#0b0f17" stroke="#334155" stroke-width="1.5"/>
+                  <path d="M 305 204 A 10 10 0 1 1 295 214 A 6 6 0 1 1 305 214" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+                  <g id="compRotor" class="rotor-spin">
+                    <circle cx="305" cy="214" r="7.5" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-dasharray="14 6"/>
+                    <circle cx="308.5" cy="214" r="3.5" fill="#0ea5e9" stroke="#f8fafc" stroke-width="1"/>
+                  </g>
+
+                  <!-- Socle d'assise & plots anti-vibratiles au sol -->
+                  <rect x="278" y="246" width="54" height="4" rx="1.5" fill="#475569"/>
+                  <rect x="282" y="250" width="9" height="4" rx="1" fill="#0f172a" stroke="#64748b" stroke-width="1"/>
+                  <rect x="319" y="250" width="9" height="4" rx="1" fill="#0f172a" stroke="#64748b" stroke-width="1"/>
+
+                  <text x="270" y="205" text-anchor="end" fill="#e2e8f0" font-size="11" font-weight="700">Compresseur</text>
+                  <text id="svgCompSpeed" x="270" y="219" text-anchor="end" fill="#38bdf8" font-size="10.5" font-family="JetBrains Mono" font-weight="700">78 % (62 Hz)</text>
+                </g>
+
+                <!-- ========================================================= -->
+                <!-- ORGANE 3 : VANNE D'INVERSION 4 VOIES MÉCANIQUE DÉTAILLÉE  -->
+                <!-- ========================================================= -->
+                <g id="organ_four_way" class="svg-organ" onclick="selectOrgan('four_way')">
+                  <!-- 3 Capillaires pilotes reliant les extrémités du cylindre et l'aspiration à la vanne pilote -->
+                  <path d="M 366 112 L 352 112 L 352 76 L 478 76" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="2 1"/>
+                  <path d="M 484 112 L 494 112 L 494 84" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="2 1"/>
+                  <path d="M 425 180 L 484 180 L 484 96" fill="none" stroke="#38bdf8" stroke-width="1.2" opacity="0.75"/>
+
+                  <!-- Corps cylindrique principal de la vanne 4 voies (Chambre HP interne) -->
+                  <rect x="366" y="88" width="118" height="48" rx="22" fill="#2a1215" stroke="#ef4444" stroke-width="2"/>
+                  <!-- Soudures / collerettes des 4 tubulures -->
+                  <rect x="418" y="82" width="14" height="7" rx="2" fill="#475569"/>
+                  <rect x="388" y="135" width="14" height="7" rx="2" fill="#475569"/>
+                  <rect x="418" y="135" width="14" height="7" rx="2" fill="#475569"/>
+                  <rect x="448" y="135" width="14" height="7" rx="2" fill="#475569"/>
+
+                  <!-- Repères des orifices -->
+                  <text x="425" y="100" text-anchor="middle" fill="#fca5a5" font-size="8" font-family="JetBrains Mono" font-weight="700">HP REF</text>
+
+                  <!-- Tiroir interne coulissant (Cavité BP en U reliant 2 voies basses adjacentes) -->
+                  <!-- En Froid (décalé à droite x=416) : relie voie centrale (425) et voie droite (455) -->
+                  <!-- En Chaud (décalé à gauche x=386) : relie voie gauche (395) et voie centrale (425) -->
+                  <g id="valve4WaySlider" style="transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1); transform: translateX(0px);">
+                    <!-- Pistons d'extrémité du tiroir -->
+                    <rect x="382" y="94" width="7" height="36" rx="3" fill="#cbd5e1" stroke="#0f172a" stroke-width="1"/>
+                    <rect x="466" y="94" width="7" height="36" rx="3" fill="#cbd5e1" stroke="#0f172a" stroke-width="1"/>
+                    <!-- Tige de liaison interne -->
+                    <line x1="389" y1="112" x2="466" y2="112" stroke="#94a3b8" stroke-width="2"/>
+                    <!-- Cloche / cavité BP isolée (U inversé) -->
+                    <path d="M 416 135 L 416 113 Q 416 104 426 104 L 454 104 Q 464 104 464 113 L 464 135 Z" fill="#172554" stroke="#38bdf8" stroke-width="2"/>
+                    <text x="440" y="123" text-anchor="middle" fill="#7dd3fc" font-size="7.5" font-family="JetBrains Mono" font-weight="700">CAVITÉ BP</text>
+                  </g>
+
+                  <!-- Vanne pilote & Bobine Solénoïde (230V AC) -->
+                  <rect x="476" y="72" width="24" height="24" rx="4" fill="#1e293b" stroke="#a855f7" stroke-width="1.8"/>
+                  <circle id="valve4WayCoilLed" cx="488" cy="84" r="4.5" fill="#475569"/>
+                  <text x="505" y="82" fill="#e2e8f0" font-size="9" font-family="JetBrains Mono" font-weight="700">Bobine V4V</text>
+                  <text id="valve4WayCoilText" x="505" y="93" fill="#94a3b8" font-size="8.5" font-family="JetBrains Mono">0V (Repos)</text>
+
+                  <!-- Étiquette principale organe -->
+                  <text x="425" y="45" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">Vanne 4 Voies (V4V)</text>
+                  <text id="svg4WayState" x="425" y="56" text-anchor="middle" fill="#38bdf8" font-size="9.5" font-family="JetBrains Mono" font-weight="700">TIROIR: FROID</text>
+                </g>
+
+                <!-- ========================================================= -->
+                <!-- ORGANE 4 : DÉTENDEUR ÉLECTRONIQUE (EEV)                   -->
+                <!-- ========================================================= -->
+                <g id="organ_eev" class="svg-organ" onclick="selectOrgan('eev')">
+                  <polygon points="365,400 400,415 365,430" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+                  <polygon points="435,400 400,415 435,430" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+                  <rect x="392" y="382" width="16" height="18" rx="3" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
+                  <line x1="400" y1="400" x2="400" y2="415" stroke="#f8fafc" stroke-width="2"/>
+                  <text x="400" y="446" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">Détendeur EEV</text>
+                  <text id="svgEevOpen" x="400" y="460" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="JetBrains Mono" font-weight="700">OUV: 64 %</text>
+                </g>
+
+                <!-- ========================================================= -->
+                <!-- ORGANE 5 : ÉCHANGEUR À PLAQUES HYDRAULIQUE                -->
+                <!-- ========================================================= -->
+                <g id="organ_plate_hx" class="svg-organ" onclick="selectOrgan('plate_hx')">
+                  <rect id="plateHxRect" x="515" y="165" width="80" height="160" rx="10" fill="url(#plateHxGradCool)" stroke="#38bdf8" stroke-width="2"/>
+                  <!-- Plaques chevron -->
+                  <g stroke="#94a3b8" stroke-width="1.3" opacity="0.7">
+                    <line x1="528" y1="175" x2="528" y2="315"/>
+                    <line x1="541" y1="175" x2="541" y2="315"/>
+                    <line x1="555" y1="175" x2="555" y2="315"/>
+                    <line x1="569" y1="175" x2="569" y2="315"/>
+                    <line x1="582" y1="175" x2="582" y2="315"/>
+                  </g>
+                  <text x="555" y="346" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">Échangeur Plaques</text>
+                  <text id="svgPlateHxRole" x="555" y="360" text-anchor="middle" fill="#06b6d4" font-size="10" font-family="JetBrains Mono">ÉVAPORATEUR</text>
+                </g>
+
+                <!-- ========================================================= -->
+                <!-- ORGANE 6 : POMPE HYDRAULIQUE & BOUCLE BÂTIMENT            -->
+                <!-- ========================================================= -->
+                <g id="organ_pump" class="svg-organ" onclick="selectOrgan('pump')">
+                  <circle cx="710" cy="190" r="22" fill="#1e293b" stroke="#10b981" stroke-width="2.2"/>
+                  <polygon points="703,180 723,190 703,200" fill="#10b981"/>
+                  <text x="710" y="156" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">Pompe P1</text>
+                  <text id="svgPumpFlow" x="710" y="226" text-anchor="middle" fill="#10b981" font-size="10.5" font-family="JetBrains Mono" font-weight="700">34.5 m³/h</text>
+                </g>
+
+                <!-- Collecteur / Émetteurs Bâtiment Tertiaire -->
+                <g id="organ_building" class="svg-organ" onclick="selectOrgan('building')">
+                  <rect x="830" y="106" width="122" height="268" rx="12" fill="#161f32" stroke="#475569" stroke-width="2"/>
+                  <text x="891" y="132" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">BÂTIMENT</text>
+                  <text x="891" y="147" text-anchor="middle" fill="#94a3b8" font-size="9.5" font-family="JetBrains Mono">CTA &amp; Ventilo-conv.</text>
+
+                  <!-- Échange interne bâtiment (élargi à 102px pour marge confortable) -->
+                  <rect x="840" y="164" width="102" height="142" rx="8" fill="#0b0f17" stroke="#334155" stroke-width="1"/>
+                  <text id="svgBuildingLoad" x="891" y="206" text-anchor="middle" fill="#38bdf8" font-size="13" font-family="JetBrains Mono" font-weight="700">201.5 kW</text>
+                  <text id="svgBuildingMode" x="891" y="229" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="JetBrains Mono">MODE CONFORT</text>
+                  <text id="svgDeltaP" x="891" y="261" text-anchor="middle" fill="#10b981" font-size="9.5" font-family="JetBrains Mono">ΔP: 1.45 bar</text>
+                  <text id="svgFlowSwitch" x="891" y="283" text-anchor="middle" fill="#10b981" font-size="9.5" font-family="JetBrains Mono">DÉBIT: OK</text>
+                </g>
+
+                <!-- ========================================================= -->
+                <!-- TUYAUTERIES HYDRAULIQUES SECONDAIRES (EAU)                -->
+                <!-- ========================================================= -->
+                <!-- Départ Eau (Échangeur Plaques -> Pompe P1 -> Bâtiment) -->
+                <path d="M 595 190 L 688 190" fill="none" stroke="#083344" stroke-width="8" stroke-linecap="round"/>
+                <path d="M 732 190 L 830 190" fill="none" stroke="#083344" stroke-width="8" stroke-linecap="round"/>
+                <path id="pipeWaterSupply" d="M 595 190 L 688 190 M 732 190 L 830 190" fill="none" stroke="#06b6d4" stroke-width="4" stroke-linecap="round" class="pipe-flow-fwd"/>
+
+                <!-- Retour Eau (Bâtiment -> Échangeur Plaques) -->
+                <path d="M 830 300 L 595 300" fill="none" stroke="#172554" stroke-width="8" stroke-linecap="round"/>
+                <path id="pipeWaterReturn" d="M 830 300 L 595 300" fill="none" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" class="pipe-flow-fwd"/>
+
+                <!-- ========================================================= -->
+                <!-- ÉTIQUETTES TÉLÉMESURES EN DIRECT SUR LE SYNOPTIQUE        -->
+                <!-- ========================================================= -->
+
+                <!-- Télémesure HP (Haute Pression) : élargie à 132px, décalée à x=162 pour éviter le tuyau x=305 -->
+                <g transform="translate(162, 52)">
+                  <rect x="0" y="0" width="132" height="46" rx="6" fill="#0f172a" stroke="#ef4444" stroke-width="1.2"/>
+                  <text x="10" y="17" fill="#fca5a5" font-size="9.5" font-family="JetBrains Mono" font-weight="700">HP (REFOUL.)</text>
+                  <text id="svgHpVal" x="10" y="35" fill="#ef4444" font-size="11" font-family="JetBrains Mono" font-weight="700">25.4 bar / 42°C</text>
+                </g>
+
+                <!-- Télémesure BP (Aspiration directe Compresseur) : élargie à 154px -->
+                <g transform="translate(232, 266)">
+                  <rect x="0" y="0" width="154" height="48" rx="6" fill="#0f172a" stroke="#3b82f6" stroke-width="1.2"/>
+                  <text x="10" y="15" fill="#93c5fd" font-size="9" font-family="JetBrains Mono" font-weight="700">BP ASPIRATION (VAP.)</text>
+                  <text id="svgBpVal" x="10" y="30" fill="#38bdf8" font-size="11" font-family="JetBrains Mono" font-weight="700">8.6 bar / +2.1°C</text>
+                  <text id="svgSuctionTemp" x="10" y="42" fill="#7dd3fc" font-size="9" font-family="JetBrains Mono">T° Asp: +8.3°C</text>
+                </g>
+
+                <!-- Surchauffe & Sous-refroidissement : élargie à 142px, décalée à x=212 -->
+                <g transform="translate(212, 355)">
+                  <rect x="0" y="0" width="142" height="44" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+                  <text id="svgSuperheat" x="10" y="17" fill="#38bdf8" font-size="10" font-family="JetBrains Mono">Surchauffe: 6.2 K</text>
+                  <text id="svgSubcool" x="10" y="34" fill="#fbbf24" font-size="10" font-family="JetBrains Mono">Sous-refr.: 4.8 K</text>
+                </g>
+
+                <!-- Télémesure Départ Eau : élargie à 174px pour contenir "45.0 °C (Cons: 45.0)" sans débordement -->
+                <g transform="translate(642, 74)">
+                  <rect x="0" y="0" width="174" height="48" rx="6" fill="#0f172a" stroke="#06b6d4" stroke-width="1.3"/>
+                  <text x="10" y="16" fill="#94a3b8" font-size="9.5" font-family="JetBrains Mono" font-weight="700">T° DÉPART EAU</text>
+                  <text id="svgWaterSupplyTemp" x="10" y="36" fill="#06b6d4" font-size="12.5" font-family="JetBrains Mono" font-weight="700">7.0 °C (Cons: 7.0)</text>
+                </g>
+
+                <!-- Télémesure Retour Eau : élargie à 174px pour contenir "40.0 °C (ΔT 5.0K)" sans débordement -->
+                <g transform="translate(642, 366)">
+                  <rect x="0" y="0" width="174" height="48" rx="6" fill="#0f172a" stroke="#3b82f6" stroke-width="1.3"/>
+                  <text x="10" y="16" fill="#94a3b8" font-size="9.5" font-family="JetBrains Mono" font-weight="700">T° RETOUR EAU</text>
+                  <text id="svgWaterReturnTemp" x="10" y="36" fill="#60a5fa" font-size="12.5" font-family="JetBrains Mono" font-weight="700">12.0 °C (ΔT 5.0K)</text>
+                </g>
+              </svg>
+            </div>
+
+            <!-- BARRE DE TELEMESURES RAPIDES SOUS LE SYNOPTIQUE -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
+              <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-2.5">
+                <span class="text-[10px] uppercase text-slate-400 font-semibold block">Pression HP / T° Cond.</span>
+                <span id="kpiHp" class="font-mono text-sm font-bold text-red-400">25.4 bar / 42.1 °C</span>
+              </div>
+              <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-2.5">
+                <span class="text-[10px] uppercase text-slate-400 font-semibold block">Pression BP / T° Évap.</span>
+                <span id="kpiBp" class="font-mono text-sm font-bold text-cyan-400">8.6 bar / +2.1 °C</span>
+              </div>
+              <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-2.5">
+                <span class="text-[10px] uppercase text-slate-400 font-semibold block">Surchauffe / Sous-refr.</span>
+                <span id="kpiShSc" class="font-mono text-sm font-bold text-amber-300">6.2 K / 4.8 K</span>
+              </div>
+              <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-2.5">
+                <span class="text-[10px] uppercase text-slate-400 font-semibold block">Régime Compresseur</span>
+                <span id="kpiComp" class="font-mono text-sm font-bold text-blue-400">78 % • 62 Hz</span>
+              </div>
+              <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-2.5">
+                <span class="text-[10px] uppercase text-slate-400 font-semibold block">Débit Eau & ΔP</span>
+                <span id="kpiWaterFlow" class="font-mono text-sm font-bold text-emerald-400">34.5 m³/h • 1.45 b</span>
+              </div>
+              <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-2.5">
+                <span class="text-[10px] uppercase text-slate-400 font-semibold block">Performance (EER/COP)</span>
+                <span id="kpiCopCard" class="font-mono text-sm font-bold text-emerald-300">3.85 (201 kW)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- PANNEAU LATÉRAL : FICHE DÉTAILLÉE DE L'ORGANE SÉLECTIONNÉ -->
+          <div class="xl:col-span-4 bg-[#111827] border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl">
+            <div>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                  <span class="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-bold">Inspection Organe GTB</span>
+                  <h3 id="organPanelTitle" class="text-base font-bold text-white mt-0.5">Compresseur Scroll Inverter</h3>
+                </div>
+                <span id="organPanelBadge" class="font-mono text-xs px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold">NOMINAL</span>
+              </div>
+
+              <!-- Sélecteur rapide d'organes -->
+              <div class="flex flex-wrap gap-1.5 my-3">
+                <button onclick="selectOrgan('compressor')" class="organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-cyan-300 border border-cyan-500/40" data-organ="compressor">Compresseur</button>
+                <button onclick="selectOrgan('four_way')" class="organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-[#0b0f17] text-slate-400 border border-slate-800 hover:text-slate-200" data-organ="four_way">Vanne 4 Voies</button>
+                <button onclick="selectOrgan('air_coil')" class="organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-[#0b0f17] text-slate-400 border border-slate-800 hover:text-slate-200" data-organ="air_coil">Batterie Air</button>
+                <button onclick="selectOrgan('eev')" class="organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-[#0b0f17] text-slate-400 border border-slate-800 hover:text-slate-200" data-organ="eev">Détendeur EEV</button>
+                <button onclick="selectOrgan('plate_hx')" class="organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-[#0b0f17] text-slate-400 border border-slate-800 hover:text-slate-200" data-organ="plate_hx">Éch. Plaques</button>
+                <button onclick="selectOrgan('pump')" class="organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-[#0b0f17] text-slate-400 border border-slate-800 hover:text-slate-200" data-organ="pump">Pompe P1</button>
+              </div>
+
+              <!-- Description technique & rôle thermodynamique -->
+              <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-3 space-y-2">
+                <p id="organPanelDesc" class="text-xs text-slate-300 leading-relaxed">
+                  Compresseur hermétique Scroll à variation de vitesse (Inverter 30–90 Hz). Aspire la vapeur basse pression surchauffée et la comprime vers la haute pression en adaptant sa fréquence à la charge thermique du bâtiment.
+                </p>
+                <div class="pt-2 border-t border-slate-800/80">
+                  <span class="text-[10px] font-mono uppercase text-slate-400">État Cycle Actuel :</span>
+                  <p id="organCycleContext" class="text-xs font-medium text-cyan-300 mt-0.5">Compression vapeur R32 de 8.6 bar vers 25.4 bar (Refoulement 68°C).</p>
+                </div>
+              </div>
+
+              <!-- Tableau des paramètres instantanés de l'organe -->
+              <div class="mt-3 space-y-1.5" id="organMetricsList">
+                <!-- Généré dynamiquement par JS -->
+              </div>
+            </div>
+
+            <!-- Point de vigilance maintenance -->
+            <div class="mt-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+              <div class="flex items-center gap-2 text-amber-400 text-xs font-bold">
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span>Point de contrôle frigoriste</span>
+              </div>
+              <p id="organMaintenanceTip" class="text-xs text-amber-200/85 mt-1 leading-relaxed">
+                Vérifier la surchauffe à l'aspiration (cible 5 à 7 K) pour garantir l'absence de retour liquide tout en refroidissant suffisamment le moteur du compresseur.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- =================================================================== -->
+        <!-- MODULE SÉCURITÉ FRIGORIFIQUE, INJECTION DE PANNES & JOURNAL ALARMES -->
+        <!-- =================================================================== -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+          
+          <!-- Chaînes de sécurité & Simulateur de défauts (7 cols) -->
+          <div class="xl:col-span-7 bg-[#111827] border border-slate-800 rounded-2xl p-4 space-y-4 shadow-xl">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+              <div>
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                  Chaîne de Sécurité Frigorifique & Hydraulique
+                </h3>
+                <p class="text-xs text-slate-400">Supervision matérielle des pressostats, contrôleurs de débit, antigel et détection gaz R32.</p>
+              </div>
+              <button onclick="acknowledgeAndResetAlarms()" class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-xs font-semibold text-emerald-300 transition">
+                Acquitter & Réarmer Sécurités
+              </button>
+            </div>
+
+            <!-- Grille des 6 sécurités matérielles -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5" id="safetyGrid">
+              <!-- Généré dynamiquement -->
+            </div>
+
+            <!-- Simulateur d'incidents terrain -->
+            <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-3">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Simulateur de Défauts Terrain (Tests Sécurité GTB)</span>
+                <button onclick="resetFaultCondition()" class="text-xs text-cyan-400 hover:underline font-medium">Rétablir conditions saines</button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button onclick="injectFault('HP_TRIP')" class="px-2.5 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-xs font-semibold text-red-300 transition">
+                  ⚡ Déclenchement HP (&gt;38 bar)
+                </button>
+                <button onclick="injectFault('FLOW_LOSS')" class="px-2.5 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-xs font-semibold text-red-300 transition">
+                  💧 Manque de débit eau (Pompe)
+                </button>
+                <button onclick="injectFault('ANTIFREEZE')" class="px-2.5 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-xs font-semibold text-red-300 transition">
+                  ❄ Alarme Antigel Échangeur
+                </button>
+                <button onclick="injectFault('GAS_LEAK')" class="px-2.5 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-xs font-semibold text-red-300 transition">
+                  ☣ Fuite Fluide R32 (Local)
+                </button>
+                <button onclick="injectFault('COIL_FOULING')" class="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-semibold text-amber-300 transition">
+                  ⚠ Dérive Encrassement Condenseur
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Journal des événements & alarmes horodaté (5 cols) -->
+          <div class="xl:col-span-5 bg-[#111827] border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider">Journal d'Événements & Alarmes GTB</h3>
+                <p class="text-xs text-slate-400">Historique horodaté des bascules de cycle, défauts et acquittements.</p>
+              </div>
+              <span id="alarmCounterBadge" class="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">0 alarme</span>
+            </div>
+
+            <div id="eventLogList" class="mt-3 space-y-2 max-h-[250px] overflow-y-auto pr-1 font-mono text-xs">
+              <!-- Logs injectés par JS -->
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- ONGLET 2 : COURBES DE FONCTIONNEMENT & ANALYSE ÉNERGÉTIQUE            -->
+      <!-- ===================================================================== -->
+      <section id="viewEnergy" class="hidden space-y-4">
+        
+        <!-- Bandeau KPIs Énergétiques -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+            <span class="text-xs text-slate-400 font-medium">Puissance Thermique / Frigo</span>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="energyThermalKw" class="font-mono text-2xl font-bold text-cyan-400">201.5 kW</span>
+              <span id="energyThermalTag" class="text-[11px] font-mono px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300">FROID</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">Puissance utile délivrée à la boucle eau</p>
+          </div>
+
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+            <span class="text-xs text-slate-400 font-medium">Puissance Électrique Absorbée</span>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="energyElecKw" class="font-mono text-2xl font-bold text-amber-400">52.3 kWe</span>
+              <span class="text-[11px] font-mono text-slate-400">Comp + Aux</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">Compresseur Inverter + Ventilateurs + P1</p>
+          </div>
+
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+            <span class="text-xs text-slate-400 font-medium">EER / COP Instantané</span>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="energyCopInst" class="font-mono text-2xl font-bold text-emerald-400">3.85</span>
+              <span id="energyCopAvg" class="text-[11px] font-mono text-emerald-300">Moy: 3.82</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">Rendement thermodynamique global</p>
+          </div>
+
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+            <span class="text-xs text-slate-400 font-medium">Consommation Cumulée Session</span>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="energyKwhTotal" class="font-mono text-2xl font-bold text-white">142.8 kWh</span>
+              <span class="text-[11px] font-mono text-slate-400">Compteur</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">Énergie électrique absorbée mesurée</p>
+          </div>
+
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+            <span class="text-xs text-slate-400 font-medium">Coût d'Exploitation Estimé</span>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="energyCostHour" class="font-mono text-2xl font-bold text-blue-400">9.41 €/h</span>
+              <span id="energyCostDay" class="text-[11px] font-mono text-slate-300">~226 €/j</span>
+            </div>
+            <p id="energyTariffLabel" class="text-[11px] text-slate-500 mt-1">Base tarifaire : 0.180 €/kWh</p>
+          </div>
+        </div>
+
+        <!-- Contrôle Simulation Graphiques -->
+        <div class="bg-[#111827] border border-slate-800 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2 text-xs text-slate-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Acquisition temps réel des courbes GTB (pas de scrutation 1.5s)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btnToggleSim" onclick="toggleSimulationPause()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition">
+              ⏸ Pause Acquisition
+            </button>
+            <button onclick="resetChartsHistory()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition">
+              ↺ Réinitialiser Courbes
+            </button>
+          </div>
+        </div>
+
+        <!-- 2 Graphiques Chart.js -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+            <h3 class="text-sm font-bold text-white mb-1">Puissances Thermique / Électrique & EER/COP</h3>
+            <p class="text-xs text-slate-400 mb-3">Suivi comparatif de la puissance utile (kW), absorbée (kWe) et du rendement.</p>
+            <div class="h-[300px] w-full">
+              <canvas id="powerChart"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4">
+            <h3 class="text-sm font-bold text-white mb-1">Profil des Températures & Changement d'État</h3>
+            <p class="text-xs text-slate-400 mb-3">T° Extérieure, Départ/Retour Eau, T° Condensation et T° Évaporation (°C).</p>
+            <div class="h-[300px] w-full">
+              <canvas id="tempChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- ONGLET 3 : 10 CAS PRATIQUES / FORMATION CVC & GTB                     -->
+      <!-- ===================================================================== -->
+      <section id="viewTraining" class="hidden space-y-4">
+        
+        <!-- En-tête pédagogique & Score -->
+        <div class="bg-[#111827] border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span class="text-xs font-mono uppercase tracking-wider text-cyan-400 font-bold">Simulateur Pédagogique & Habilitation CVC / GTB</span>
+            <h2 class="text-lg font-bold text-white mt-0.5">10 Cas Pratiques de Diagnostic sur Groupe Réversible</h2>
+            <p class="text-xs text-slate-400 mt-1">Analysez les télémesures GTB, identifiez l'origine thermodynamique, hydraulique ou régulation de la dérive, et validez votre diagnostic.</p>
+          </div>
+          <div class="flex items-center gap-4 bg-[#0b0f17] border border-slate-800 rounded-xl px-4 py-3 shrink-0">
+            <div>
+              <span class="text-[11px] uppercase text-slate-400 block font-semibold">Score Technicien</span>
+              <span id="trainingScoreBig" class="font-mono text-2xl font-bold text-emerald-400">0 / 10</span>
+            </div>
+            <div class="h-8 w-px bg-slate-800"></div>
+            <div>
+              <span class="text-[11px] uppercase text-slate-400 block font-semibold">Progression</span>
+              <span id="trainingProgressText" class="font-mono text-sm font-bold text-slate-200">0% validé</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grille : Liste des 10 scénarios (4 cols) + Espace Résolution (8 cols) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          
+          <!-- Menu latéral des 10 cas -->
+          <div class="lg:col-span-4 bg-[#111827] border border-slate-800 rounded-2xl p-3 space-y-1.5 max-h-[680px] overflow-y-auto" id="caseListContainer">
+            <!-- Rempli dynamiquement -->
+          </div>
+
+          <!-- Détail du cas sélectionné -->
+          <div class="lg:col-span-8 bg-[#111827] border border-slate-800 rounded-2xl p-5 space-y-4" id="caseDetailContainer">
+            <!-- Rempli dynamiquement -->
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODALE PARAMÈTRES & CONSIGNES GTB                                     -->
+  <!-- ===================================================================== -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#111827] border border-slate-700 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white">Paramètres & Consignes de Régulation GTB</h3>
+        <button onclick="toggleSettingsModal(false)" class="text-slate-400 hover:text-white text-lg font-bold px-2">✕</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div class="bg-[#0b0f17] p-3 rounded-xl border border-slate-800">
+          <label class="block text-slate-400 font-semibold mb-1">Consigne Eau Glacée (Mode Froid)</label>
+          <div class="flex items-center gap-2">
+            <input id="cfgCoolSetpoint" type="number" step="0.5" min="4" max="16" value="7.0" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-cyan-400 font-bold">
+            <span class="font-mono text-slate-400">°C</span>
+          </div>
+        </div>
+
+        <div class="bg-[#0b0f17] p-3 rounded-xl border border-slate-800">
+          <label class="block text-slate-400 font-semibold mb-1">Consigne Eau Chaude (Mode PAC)</label>
+          <div class="flex items-center gap-2">
+            <input id="cfgHeatSetpoint" type="number" step="0.5" min="30" max="55" value="45.0" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-orange-400 font-bold">
+            <span class="font-mono text-slate-400">°C</span>
+          </div>
+        </div>
+
+        <div class="bg-[#0b0f17] p-3 rounded-xl border border-slate-800">
+          <label class="block text-slate-400 font-semibold mb-1">Seuil Bascule Mode Auto (T° Ext)</label>
+          <div class="flex items-center gap-2">
+            <input id="cfgAutoThreshold" type="number" step="0.5" min="10" max="24" value="16.0" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-slate-200 font-bold">
+            <span class="font-mono text-slate-400">°C</span>
+          </div>
+        </div>
+
+        <div class="bg-[#0b0f17] p-3 rounded-xl border border-slate-800">
+          <label class="block text-slate-400 font-semibold mb-1">ΔT Hydraulique Cible</label>
+          <div class="flex items-center gap-2">
+            <input id="cfgTargetDeltaT" type="number" step="0.5" min="3" max="10" value="5.0" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-emerald-400 font-bold">
+            <span class="font-mono text-slate-400">K</span>
+          </div>
+        </div>
+
+        <div class="bg-[#0b0f17] p-3 rounded-xl border border-slate-800">
+          <label class="block text-slate-400 font-semibold mb-1">Seuil Sécurité Pressostat HP Max</label>
+          <div class="flex items-center gap-2">
+            <input id="cfgHpMax" type="number" step="0.5" min="30" max="42" value="38.0" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-red-400 font-bold">
+            <span class="font-mono text-slate-400">bar</span>
+          </div>
+        </div>
+
+        <div class="bg-[#0b0f17] p-3 rounded-xl border border-slate-800">
+          <label class="block text-slate-400 font-semibold mb-1">Tarif Électricité (€/kWh)</label>
+          <div class="flex items-center gap-2">
+            <input id="cfgKwhPrice" type="number" step="0.01" min="0.05" max="1.00" value="0.18" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-blue-400 font-bold">
+            <span class="font-mono text-slate-400">€</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="toggleSettingsModal(false)" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">Annuler</button>
+        <button onclick="saveSettings()" class="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white">Appliquer Consignes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- ZONE D'IMPRESSION RAPPORT D'INTERVENTION PDF (Masquée à l'écran)      -->
+  <!-- ===================================================================== -->
+  <div id="printReportArea" class="hidden p-8 max-w-4xl mx-auto">
+    <!-- Rempli dynamiquement avant window.print() -->
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- LOGIQUE JAVASCRIPT COMPLÈTE (MODÈLE THERMODYNAMIQUE, GTB, CHARTS, CAS)-->
+  <!-- ===================================================================== -->
+  <script>
+    // =========================================================================
+    // 1. ÉTAT GLOBAL DE L'INSTALLATION GTB
+    // =========================================================================
+    const state = {
+      thermalModeSelect: 'COOL', // 'COOL' | 'HEAT' | 'AUTO'
+      effectiveCycle: 'COOL',    // 'COOL' | 'HEAT'
+      buildingMode: 'CONFORT',   // 'CONFORT' | 'NUIT' | 'WEEKEND' | 'DEROGATION'
+      extTemp: 28.0,
+
+      // Consignes & seuils configurables
+      coolSetpoint: 7.0,
+      heatSetpoint: 45.0,
+      autoSwitchTemp: 16.0,
+      targetDeltaT: 5.0,
+      hpMaxThreshold: 38.0,
+      bpMinThreshold: 4.2,
+      kwhPrice: 0.18,
+
+      // Grandeurs thermodynamiques & hydrauliques calculées
+      hpPressure: 25.4,
+      condTemp: 42.1,
+      bpPressure: 8.6,
+      evapTemp: 2.1,
+      superheat: 6.2,
+      subcooling: 4.8,
+      compSpeed: 78,
+      eevOpening: 64,
+      waterSupplyTemp: 7.0,
+      waterReturnTemp: 12.0,
+      waterDeltaT: 5.0,
+      waterFlow: 34.5,
+      pumpDeltaP: 1.45,
+      thermalPowerKw: 201.5,
+      elecPowerKw: 52.3,
+      cop: 3.85,
+      cumulativeKwh: 142.8,
+      copHistorySum: 3.85,
+      copSamplesCount: 1,
+
+      // Défauts & Sécurités
+      activeFault: null, // null | 'HP_TRIP' | 'FLOW_LOSS' | 'ANTIFREEZE' | 'GAS_LEAK' | 'COIL_FOULING'
+      safetyLatched: false,
+      safeties: {
+        hpSwitch: true,
+        bpSwitch: true,
+        flowSwitch: true,
+        antifreeze: true,
+        compThermal: true,
+        gasDetector: true
+      },
+
+      // UI & Simulation
+      selectedOrgan: 'compressor',
+      simPaused: false,
+      logs: [],
+      selectedCaseIndex: 0,
+      completedCases: {} // { caseId: { correct: boolean, chosenIndex: number } }
+    };
+
+    // =========================================================================
+    // 2. BASE DE CONNAISSANCES DES ORGANES DU SYNOPTIQUE
+    // =========================================================================
+    const organsMetadata = {
+      compressor: {
+        title: "Compresseur Scroll Inverter (R32)",
+        desc: "Compresseur hermétique à spirales piloté par variateur de fréquence (30 à 90 Hz). Ajuste continuellement le débit massique de fluide frigorigène selon l'écart entre la température d'eau mesurée et la consigne.",
+        tip: "Contrôler la surchauffe à l'aspiration (5 à 7 K) et la température de refoulement (< 105 °C) pour préserver la tenue thermique de l'huile PVE."
+      },
+      four_way: {
+        title: "Vanne d'Inversion de Cycle 4 Voies",
+        desc: "Vanne pilote électromagnétique permettant d'inverser le rôle des échangeurs : en mode Froid, le gaz chaud refoulé va vers la batterie extérieure ; en mode Chaud (PAC), il est dirigé vers l'échangeur à plaques hydraulique.",
+        tip: "Lors d'une inversion de cycle, vérifier un ΔP minimum de 2.5 bar entre HP et BP pour assurer le basculement franc du tiroir interne sans position intermédiaire."
+      },
+      air_coil: {
+        title: "Batterie à Ailettes Air Extérieur & Ventilateurs EC",
+        desc: "Échangeur air/fluide équipé de motoventilateurs à commutation électronique (EC). Agit comme condenseur (rejet de chaleur) en mode Froid et comme évaporateur (captation d'énergie sur l'air extérieur) en mode Chaud.",
+        tip: "Surveiller l'encrassement des ailettes en été (risque coupure HP) et le givrage en hiver lorsque T° ext < +5 °C (cycles de dégivrage)."
+      },
+      eev: {
+        title: "Détendeur Électronique Pas-à-Pas (EEV)",
+        desc: "Organe de détente piloté par le régulateur surchauffe. Abaisse la pression du fluide liquide haute pression vers la basse pression tout en régulant précisément le remplissage de l'évaporateur.",
+        tip: "Une ouverture EEV saturée à 100 % avec une surchauffe élevée (> 12 K) traduit généralement un manque de charge en fluide frigorigène ou un filtre déshydrateur colmaté."
+      },
+      plate_hx: {
+        title: "Échangeur à Plaques Brasées Inox (Fluide / Eau)",
+        desc: "Échangeur thermique compact à contre-courant assurant le transfert énergétique entre le circuit frigorifique R32 et la boucle d'eau du bâtiment tertiaire.",
+        tip: "Surveiller le pincement thermique (écart entre T° évaporation/condensation et T° sortie d'eau, nominal 2 à 3.5 K). Un pincement > 6 K signale un encrassement ou entartrage."
+      },
+      pump: {
+        title: "Pompe Hydraulique Primaire & Contrôleur de Débit",
+        desc: "Circulateur à vitesse variable maintenant le débit d'irrigation de l'échangeur à plaques et des réseaux secondaires (CTA et ventilo-convecteurs).",
+        tip: "Le contrôleur de débit (flow-switch) interdit impérativement le démarrage du compresseur en cas de manque d'eau pour éviter le gel instantané de l'échangeur."
+      },
+      building: {
+        title: "Boucle Terminale Bâtiment Tertiaire",
+        desc: "Réseau de distribution desservant les Centrales de Traitement d'Air (CTA) et les unités terminales des plateaux de bureaux selon le planning d'occupation GTB.",
+        tip: "Un ΔT retour/départ trop faible (< 3 K) indique souvent des vannes 3 voies ouvertes en permanence ou un bypass hydraulique mal réglé."
+      }
+    };
+
+    // =========================================================================
+    // 3. LES 10 CAS PRATIQUES / FORMATION CVC & GTB
+    // =========================================================================
+    const trainingCases = [
+      {
+        id: 1,
+        category: "Thermodynamique & Cycle",
+        title: "Cas 1 : Surchauffe élevée & baisse de puissance en mode Froid",
+        context: "En plein après-midi d'été (T° ext = 32 °C), les occupants se plaignent d'une remontée en température dans les bureaux. La GTB indique un régime compresseur à 100 % mais une puissance frigorifique plafonnant à 55 %.",
+        simPreset: { mode: 'COOL', extTemp: 32, fault: null },
+        readings: [
+          { param: "Régime & T° Ext", measured: "Froid / 32.0 °C", nominal: "Froid / 32.0 °C", status: "ok" },
+          { param: "T° Départ / Retour Eau", measured: "11.8 °C / 14.2 °C", nominal: "7.0 °C / 12.0 °C", status: "warn" },
+          { param: "Pression BP / T° Évap.", measured: "6.4 bar / -5.2 °C", nominal: "8.6 bar / +2.1 °C", status: "alarm" },
+          { param: "Surchauffe Aspiration", measured: "15.8 K", nominal: "5.5 à 7.0 K", status: "alarm" },
+          { param: "Sous-refroidissement", measured: "0.8 K", nominal: "4.0 à 6.0 K", status: "alarm" },
+          { param: "Ouverture Détendeur EEV", measured: "100 % (Saturé)", nominal: "60 à 75 %", status: "warn" }
+        ],
+        question: "Quel est le diagnostic thermodynamique prioritaire face à ces relevés ?",
+        options: [
+          "Manque de charge en fluide frigorigène (R32) sur le circuit",
+          "Encrassement sévère des ailettes du condenseur extérieur",
+          "Débit d'eau trop élevé sur la pompe primaire P1",
+          "Sonde de température extérieure défectueuse"
+        ],
+        correctIndex: 0,
+        explanation: "Une BP anormalement basse (-5.2 °C) associée à une surchauffe très élevée (15.8 K), un sous-refroidissement quasi nul (0.8 K) et un EEV ouvert à 100 % sont les symptômes classiques d'un manque de fluide frigorigène : l'évaporateur n'est plus suffisamment alimenté en liquide. Action : recherche de fuite réglementaire, récupération, réparation et recharge au poids."
+      },
+      {
+        id: 2,
+        category: "Thermodynamique & Cycle",
+        title: "Cas 2 : Inversion de cycle incomplète en intersaison",
+        context: "Au printemps (T° ext = 14 °C), le groupe bascule en mode Chaud le matin. La consommation électrique est normale mais l'eau ne chauffe pas (départ = retour à 19 °C) et les tuyauteries d'aspiration et de refoulement sont toutes deux tièdes.",
+        simPreset: { mode: 'HEAT', extTemp: 14, fault: null },
+        readings: [
+          { param: "Régime commandé", measured: "Chaud (PAC)", nominal: "Chaud (PAC)", status: "ok" },
+          { param: "Pression HP / BP", measured: "16.5 bar / 13.8 bar", nominal: "28.5 bar / 7.8 bar", status: "alarm" },
+          { param: "Taux de compression", measured: "1.19 (Très faible)", nominal: "3.4 à 4.2", status: "alarm" },
+          { param: "ΔT Eau (Départ - Retour)", measured: "0.3 K", nominal: "5.0 K", status: "alarm" },
+          { param: "Intensité Compresseur", measured: "34 A (Faible)", nominal: "68 A", status: "warn" }
+        ],
+        question: "Quelle est la cause la plus probable de cet écrasement du taux de compression lors de l'inversion ?",
+        options: [
+          "Vanne d'inversion 4 voies bloquée en position intermédiaire (by-pass interne HP/BP)",
+          "Filtre à tamis hydraulique colmaté sur le retour bâtiment",
+          "Consigne d'eau chaude réglée trop haut à 50 °C",
+          "Ventilateurs extérieurs tournant en survitesse"
+        ],
+        correctIndex: 0,
+        explanation: "Lorsqu'une vanne 4 voies reste bloquée à mi-course (souvent par manque de ΔP différentiel au moment de la commutation ou bobine défaillante), le gaz chaud refoulé court-circuite directement vers l'aspiration. HP et BP s'équilibrent autour de 14–16 bar et aucun transfert thermique n'a lieu."
+      },
+      {
+        id: 3,
+        category: "Thermodynamique & Cycle",
+        title: "Cas 3 : Givrage batterie extérieure & dégivrage inefficace",
+        context: "Par temps froid et humide (T° ext = +1.5 °C, HR = 92 %), la PAC fonctionne en mode Chaud. Après 90 minutes, la BP chute progressivement jusqu'à couper en sécurité BP, et la batterie extérieure est prise dans un bloc de glace.",
+        simPreset: { mode: 'HEAT', extTemp: 1.5, fault: null },
+        readings: [
+          { param: "T° Extérieure / Humidité", measured: "+1.5 °C / 92 %", nominal: "+1.5 °C / 92 %", status: "ok" },
+          { param: "T° Évaporation (Batterie ext)", measured: "-13.5 °C", nominal: "-4.5 °C", status: "alarm" },
+          { param: "Pression BP", measured: "4.1 bar (Coupure)", nominal: "6.8 bar", status: "alarm" },
+          { param: "Dernier cycle de dégivrage", measured: "Il y a > 2h (Absent)", nominal: "Toutes les 45 min", status: "alarm" },
+          { param: "COP instantané", measured: "1.65", nominal: "3.15", status: "warn" }
+        ],
+        question: "Quelle défaillance explique la prise en glace complète de l'évaporateur extérieur ?",
+        options: [
+          "Dérive de la sonde de fin/début de dégivrage ou paramétrage inhibant l'inversion de dégivrage",
+          "Sur-débit d'eau sur le circuit secondaire bâtiment",
+          "Surchauffe réglée trop basse à 5 K sur le détendeur",
+          "Température de consigne eau chaude trop basse (35 °C)"
+        ],
+        correctIndex: 0,
+        explanation: "Entre -2 °C et +5 °C avec forte humidité, la batterie extérieure capte la chaleur latente de l'air et givre naturellement. Si la sonde de batterie extérieure dérive (indiquant une température positive) ou si l'autorisation de dégivrage est bloquée en GTB, le givre isole la batterie, faisant chuter la BP jusqu'à la coupure sécurité."
+      },
+      {
+        id: 4,
+        category: "Hydraulique & Échange",
+        title: "Cas 4 : ΔT eau trop faible & perte de puissance utile",
+        context: "En mode Froid (consigne 7 °C), la température de départ est stable à 7.1 °C, mais l'eau revient du bâtiment à seulement 9.2 °C (ΔT = 2.1 K au lieu de 5 K) alors que les bureaux ont besoin de froid.",
+        simPreset: { mode: 'COOL', extTemp: 27, fault: null },
+        readings: [
+          { param: "T° Départ / Retour Eau", measured: "7.1 °C / 9.2 °C", nominal: "7.0 °C / 12.0 °C", status: "warn" },
+          { param: "ΔT Hydraulique", measured: "2.1 K", nominal: "5.0 K", status: "alarm" },
+          { param: "Débit Pompe Primaire P1", measured: "46.0 m³/h (133%)", nominal: "34.5 m³/h", status: "warn" },
+          { param: "ΔP Pompe P1", measured: "0.75 bar (Faible)", nominal: "1.45 bar", status: "warn" },
+          { param: "Charge Compresseur", measured: "42 % (Limité)", nominal: "78 %", status: "ok" }
+        ],
+        question: "Quelle anomalie hydraulique provoque ce syndrome de « faible ΔT » (Low Delta-T Syndrome) ?",
+        options: [
+          "Vanne de bypass ouverte ou vannes 3 voies des CTA laissant passer l'eau sans échange",
+          "Manque de fluide frigorigène R32 dans le circuit",
+          "Encrassement des ailettes de la batterie extérieure",
+          "Compresseur Scroll bloqué mécaniquement"
+        ],
+        correctIndex: 0,
+        explanation: "Un débit excessif (46 m³/h) couplé à un faible ΔP et un retour d'eau presque aussi froid que le départ (9.2 °C) indique que l'eau glacée court-circuite les batteries terminales (bypass ouvert ou vannes 3 voies mal équilibrées). Le compresseur réduit sa puissance car son retour est déjà froid."
+      },
+      {
+        id: 5,
+        category: "Hydraulique & Échange",
+        title: "Cas 5 : Pincement thermique élevé sur l'échangeur à plaques",
+        context: "En mode Chaud (consigne départ 45 °C), le groupe peine à atteindre la consigne et la HP monte anormalement haut (34.8 bar) malgré un débit d'eau nominal de 34.5 m³/h.",
+        simPreset: { mode: 'HEAT', extTemp: 8, fault: null },
+        readings: [
+          { param: "T° Départ / Retour Eau", measured: "41.5 °C / 36.8 °C", nominal: "45.0 °C / 40.0 °C", status: "warn" },
+          { param: "T° Condensation R32", measured: "54.2 °C (34.8 bar)", nominal: "48.0 °C (29.8 bar)", status: "alarm" },
+          { param: "Pincement (T°Cond - T°Dép)", measured: "12.7 K", nominal: "2.5 à 3.5 K", status: "alarm" },
+          { param: "Débit Eau Primaire", measured: "34.2 m³/h", nominal: "34.5 m³/h", status: "ok" },
+          { param: "Sous-refroidissement", measured: "7.5 K", nominal: "5.0 K", status: "ok" }
+        ],
+        question: "Comment interpréter cet écart de 12.7 K entre la condensation et le départ d'eau ?",
+        options: [
+          "Encrassement / embouage interne côté eau de l'échangeur à plaques dégradant le coefficient d'échange",
+          "Manque d'air sur les ventilateurs extérieurs",
+          "Vanne 4 voies bloquée en position Froid",
+          "Sonde de pression BP défectueuse"
+        ],
+        correctIndex: 0,
+        explanation: "Le pincement thermique mesure l'efficacité d'un échangeur. Avec un débit d'eau normal, un pincement passant de 3 K à 12.7 K prouve une résistance thermique accrue : l'échangeur à plaques est emboué ou entartré côté hydraulique. Action : nettoyage du filtre à tamis et désembouage / détartrage de l'échangeur."
+      },
+      {
+        id: 6,
+        category: "Hydraulique & Échange",
+        title: "Cas 6 : Surconsommation hivernale liée à la loi d'eau GTB",
+        context: "L'exploitant constate une facture électrique anormalement élevée en mi-saison hivernale (T° ext = 13 °C) alors que le bâtiment est bien chauffé.",
+        simPreset: { mode: 'HEAT', extTemp: 13, fault: null },
+        readings: [
+          { param: "T° Extérieure", measured: "13.0 °C", nominal: "13.0 °C", status: "ok" },
+          { param: "Consigne Départ Eau active", measured: "52.0 °C (Fixe)", nominal: "36.0 °C (Loi d'eau)", status: "alarm" },
+          { param: "T° Condensation PAC", measured: "55.5 °C (35.8 bar)", nominal: "39.5 °C (24.5 bar)", status: "warn" },
+          { param: "COP moyen mesuré", measured: "2.45", nominal: "4.10", status: "alarm" },
+          { param: "Vannes terminales bureaux", measured: "Fermées à 85 %", nominal: "Ouvertes 50–70 %", status: "warn" }
+        ],
+        question: "Quelle action d'optimisation GTB permet de restaurer immédiatement le COP ?",
+        options: [
+          "Activer la loi d'eau climatique (glissement de consigne 35–45 °C selon T° ext) au lieu d'une consigne fixe à 52 °C",
+          "Augmenter le seuil de coupure du pressostat HP à 42 bar",
+          "Forcer le mode Dérogation / Pic de charge en permanence",
+          "Réduire le débit de la pompe primaire de 50 %"
+        ],
+        correctIndex: 0,
+        explanation: "Sur une pompe à chaleur, chaque degré supplémentaire de température de condensation fait chuter le COP d'environ 2.5 à 3 %. Maintenir 52 °C par 13 °C extérieur est inutile et pénalise fortement le rendement. L'activation d'une courbe de loi d'eau abaisse la HP et fait remonter le COP au-dessus de 4.0."
+      },
+      {
+        id: 7,
+        category: "Sécurités & Alarmes",
+        title: "Cas 7 : Déclenchement Pressostat Haute Pression (HP)",
+        context: "Lors d'une journée caniculaire (T° ext = 37 °C), le groupe s'arrête brutalement avec l'alarme critique « DÉFAUT PRESSOSTAT HP » verrouillée en GTB.",
+        simPreset: { mode: 'COOL', extTemp: 37, fault: 'HP_TRIP' },
+        readings: [
+          { param: "État Groupe", measured: "ARRÊT SÉCURITÉ HP", nominal: "EN SERVICE", status: "alarm" },
+          { param: "Pic HP enregistré", measured: "38.6 bar (T°Cond 60°C)", nominal: "< 34.0 bar", status: "alarm" },
+          { param: "Batterie extérieure", measured: "Colmatée (pollen/poussière)", nominal: "Propre", status: "alarm" },
+          { param: "Ventilateur extérieur n°2", measured: "Disjoncté (0 tr/min)", nominal: "100 %", status: "alarm" },
+          { param: "Réarmement automatique", measured: "Verrouillé (Manuel)", nominal: "Verrouillé", status: "ok" }
+        ],
+        question: "Quelle est la procédure d'intervention conforme avant tout réarmement ?",
+        options: [
+          "Nettoyer la batterie extérieure, remettre en service le ventilateur n°2, puis réarmer manuellement le pressostat HP",
+          "Shunter le pressostat HP le temps que la température extérieure redescende",
+          "Dégazer une partie du fluide R32 à l'atmosphère pour baisser la pression",
+          "Passer le groupe en mode Chaud pour décharger la haute pression"
+        ],
+        correctIndex: 0,
+        explanation: "Une coupure HP en mode Froid résulte d'une incapacité à évacuer la chaleur au condenseur (batterie encrassée + ventilateur HS par forte chaleur). Le pressostat HP est à réarmement manuel obligatoire. Il ne faut jamais shunter une sécurité ni dégazer."
+      },
+      {
+        id: 8,
+        category: "Sécurités & Alarmes",
+        title: "Cas 8 : Alarme Antigel Échangeur & Coupure Débit",
+        context: "En mode Froid, le groupe déclenche en défaut « SÉCURITÉ ANTIGEL ÉCHANGEUR ». La température d'évaporation est descendue à -3.8 °C juste avant l'arrêt.",
+        simPreset: { mode: 'COOL', extTemp: 25, fault: 'ANTIFREEZE' },
+        readings: [
+          { param: "Alarme active", measured: "ANTIGEL ÉCHANGEUR", nominal: "AUCUNE", status: "alarm" },
+          { param: "T° Sortie Eau Évaporateur", measured: "+1.8 °C (Chute rapide)", nominal: "7.0 °C", status: "alarm" },
+          { param: "Débit d'eau mesuré", measured: "9.5 m³/h (Chute de 72%)", nominal: "34.5 m³/h", status: "alarm" },
+          { param: "Filtre à tamis aspiration pompe", measured: "ΔP = 1.9 bar (Colmaté)", nominal: "ΔP < 0.2 bar", status: "alarm" },
+          { param: "Taux de glycol circuit", measured: "0 % (Eau pure)", nominal: "0 % (Eau pure)", status: "ok" }
+        ],
+        question: "Pourquoi le colmatage du filtre hydraulique a-t-il déclenché la sécurité antigel ?",
+        options: [
+          "La chute du débit d'eau dans l'échangeur à plaques fait plonger la température d'eau vers 0 °C au contact du R32",
+          "Le manque d'eau fait surchauffer le compresseur qui passe en mode antigel",
+          "Le détendeur électronique s'est fermé complètement par manque d'eau",
+          "La vanne 4 voies a basculé automatiquement en mode dégivrage"
+        ],
+        correctIndex: 0,
+        explanation: "À puissance frigorifique égale (P = qm · Cp · ΔT), si le débit d'eau chute brutalement suite au colmatage du filtre à tamis, le ΔT explose et l'eau gèle dans les plaques de l'évaporateur, risquant de le faire éclater. La sonde antigel coupe le compresseur avant la prise en glace."
+      },
+      {
+        id: 9,
+        category: "Régulation GTB",
+        title: "Cas 9 : Court-cycles compresseur & usure prématurée",
+        context: "L'historique GTB révèle que le compresseur effectue 14 démarrages par heure en intersaison alors que la limite constructeur est de 6 démarrages/heure maximum.",
+        simPreset: { mode: 'COOL', extTemp: 19, fault: null },
+        readings: [
+          { param: "Démarrages Compresseur", measured: "14 / heure (Critique)", nominal: "< 6 / heure", status: "alarm" },
+          { param: "Temps de marche moyen", measured: "2 min 10 s", nominal: "> 10 min", status: "alarm" },
+          { param: "Bande morte / Différentiel", measured: "0.4 K (±0.2 K)", nominal: "2.0 K (±1.0 K)", status: "alarm" },
+          { param: "Volume d'eau boucle primaire", measured: "Faible (Pas de ballon tampon)", nominal: "12 L/kW", status: "warn" },
+          { param: "Charge thermique bâtiment", measured: "18 % (Faible charge)", nominal: "50–100 %", status: "ok" }
+        ],
+        question: "Quels paramètres de régulation GTB faut-il ajuster pour éliminer ces court-cycles ?",
+        options: [
+          "Élargir le différentiel de régulation (bande morte) et activer une temporisation anti-court-cycle (minimum 5 à 8 min entre démarrages)",
+          "Réduire le débit de la pompe primaire au minimum",
+          "Abaisser la consigne d'eau glacée à 4 °C",
+          "Désactiver le variateur Inverter du compresseur"
+        ],
+        correctIndex: 0,
+        explanation: "En faible charge (18 %), même au régime minimal (30 Hz), le compresseur produit plus de froid que le bâtiment n'en absorbe. Avec un différentiel trop étroit (0.4 K) et une faible inertie d'eau, la consigne est atteinte en 2 minutes. Élargir la zone neutre et imposer une temporisation anti-court-cycle protège le compresseur et le retour d'huile."
+      },
+      {
+        id: 10,
+        category: "Régulation GTB",
+        title: "Cas 10 : Dérive de sonde départ eau faussant la régulation",
+        context: "En mode Froid (consigne 7 °C), la supervision affiche une température de départ parfaitement stable à 7.0 °C, mais les centrales de traitement d'air en aval mesurent une eau glacée à 11.5 °C.",
+        simPreset: { mode: 'COOL', extTemp: 28, fault: null },
+        readings: [
+          { param: "T° Départ Eau (Sonde GTB)", measured: "7.0 °C", nominal: "7.0 °C", status: "ok" },
+          { param: "T° Retour Eau (Sonde GTB)", measured: "14.5 °C", nominal: "12.0 °C", status: "warn" },
+          { param: "Thermomètre étalon départ", measured: "11.5 °C", nominal: "7.0 °C", status: "alarm" },
+          { param: "T° Évaporation R32", measured: "+8.2 °C (10.3 bar)", nominal: "+2.1 °C (8.6 bar)", status: "alarm" },
+          { param: "Régime Compresseur", measured: "35 % (Ralenti)", nominal: "80 %", status: "warn" }
+        ],
+        question: "Quelle est l'origine exacte de ce dysfonctionnement de régulation ?",
+        options: [
+          "Décalage (offset de -4.5 K) ou défaut d'isolement du doigt de gant de la sonde CTN/PT1000 départ eau",
+          "Manque de gaz R32 dans l'évaporateur",
+          "Vanne 4 voies bloquée en position Chaud",
+          "Coupure du pressostat Basse Pression"
+        ],
+        correctIndex: 0,
+        explanation: "La température d'évaporation (+8.2 °C) est cohérente avec une eau sortant réellement à 11.5 °C (pincement ~3.3 K), et non à 7.0 °C ! La sonde de départ eau a dérivé de -4.5 K, leurrant le régulateur qui croit avoir atteint sa consigne et maintient le compresseur au ralenti (35 %)."
+      }
+    ];
+
+    // =========================================================================
+    // 4. MOTEUR PHYSIQUE & THERMODYNAMIQUE TEMPS RÉEL
+    // =========================================================================
+    function addLog(level, message) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('fr-FR');
+      state.logs.unshift({
+        time: timeStr,
+        level, // 'INFO' | 'WARN' | 'ALARM' | 'OK'
+        message
+      });
+      if (state.logs.length > 50) state.logs.pop();
+      renderLogs();
+    }
+
+    function computeSimulationStep(dtSeconds = 1.5) {
+      // 1. Détermination du cycle effectif (Froid vs Chaud)
+      if (state.thermalModeSelect === 'AUTO') {
+        const targetCycle = state.extTemp >= state.autoSwitchTemp ? 'COOL' : 'HEAT';
+        if (targetCycle !== state.effectiveCycle) {
+          state.effectiveCycle = targetCycle;
+          addLog('INFO', `Bascule automatique cycle -> ${targetCycle === 'COOL' ? 'FROID (T° ext ≥ seuil)' : 'CHAUD PAC (T° ext < seuil)'}`);
+        }
+      } else {
+        state.effectiveCycle = state.thermalModeSelect;
+      }
+
+      // 2. Facteur de charge bâtiment selon mode d'exploitation
+      const modeFactors = {
+        CONFORT: { loadFactor: 1.0, offsetCool: 0.0, offsetHeat: 0.0, flowFactor: 1.0 },
+        NUIT: { loadFactor: 0.45, offsetCool: +3.0, offsetHeat: -4.0, flowFactor: 0.65 },
+        WEEKEND: { loadFactor: 0.25, offsetCool: +5.0, offsetHeat: -7.0, flowFactor: 0.50 },
+        DEROGATION: { loadFactor: 1.22, offsetCool: -1.0, offsetHeat: +2.0, flowFactor: 1.12 }
+      };
+      const mCfg = modeFactors[state.buildingMode];
+
+      // Consigne eau effective
+      const activeSetpoint = state.effectiveCycle === 'COOL'
+        ? state.coolSetpoint + mCfg.offsetCool
+        : state.heatSetpoint + mCfg.offsetHeat;
+
+      // 3. Gestion des sécurités et défauts injectés
+      state.safeties = {
+        hpSwitch: state.activeFault !== 'HP_TRIP',
+        bpSwitch: true,
+        flowSwitch: state.activeFault !== 'FLOW_LOSS',
+        antifreeze: state.activeFault !== 'ANTIFREEZE',
+        compThermal: true,
+        gasDetector: state.activeFault !== 'GAS_LEAK'
+      };
+
+      const isCriticalFault = ['HP_TRIP', 'FLOW_LOSS', 'ANTIFREEZE', 'GAS_LEAK'].includes(state.activeFault);
+      if (isCriticalFault) {
+        state.safetyLatched = true;
+      }
+
+      // Petit bruit réaliste de capteur (±0.15)
+      const noise = (amp = 0.15) => (Math.random() - 0.5) * 2 * amp;
+
+      // 4. Si groupe verrouillé en arrêt sécurité
+      if (state.safetyLatched) {
+        state.compSpeed = 0;
+        state.eevOpening = 0;
+        state.thermalPowerKw = 0;
+        state.elecPowerKw = state.activeFault === 'FLOW_LOSS' ? 0.2 : 1.8; // Auxiliaires seuls
+        state.cop = 0;
+        state.waterFlow = state.activeFault === 'FLOW_LOSS' ? 0.0 : +(34.5 * mCfg.flowFactor).toFixed(1);
+        state.pumpDeltaP = state.activeFault === 'FLOW_LOSS' ? 0.0 : +(1.45 * mCfg.flowFactor).toFixed(2);
+        state.waterSupplyTemp = +(state.extTemp * 0.35 + 14 + noise(0.1)).toFixed(1);
+        state.waterReturnTemp = +(state.waterSupplyTemp + noise(0.1)).toFixed(1);
+        state.waterDeltaT = +(Math.abs(state.waterReturnTemp - state.waterSupplyTemp)).toFixed(1);
+
+        // Pressions au repos ou pic défaut
+        state.hpPressure = state.activeFault === 'HP_TRIP' ? 38.6 : +(15.2 + noise(0.2)).toFixed(1);
+        state.bpPressure = +(14.8 + noise(0.2)).toFixed(1);
+        state.condTemp = +(24.0 + noise(0.2)).toFixed(1);
+        state.evapTemp = +(23.5 + noise(0.2)).toFixed(1);
+        state.superheat = 0.5;
+        state.subcooling = 0.5;
+        return;
+      }
+
+      // 5. Fonctionnement normal (Froid ou Chaud)
+      const foulingPenalty = state.activeFault === 'COIL_FOULING' ? 1 : 0;
+
+      // Charge thermique demandée par le bâtiment (kW)
+      let weatherFactor = state.effectiveCycle === 'COOL'
+        ? Math.max(0.35, Math.min(1.25, (state.extTemp - 14) / 18))
+        : Math.max(0.35, Math.min(1.25, (20 - state.extTemp) / 22));
+
+      const nominalCap = 240; // kW
+      const rawThermalKw = nominalCap * 0.85 * mCfg.loadFactor * weatherFactor;
+      state.thermalPowerKw = +(Math.max(35, Math.min(255, rawThermalKw + noise(1.2)))).toFixed(1);
+
+      // Régime compresseur Inverter (%)
+      state.compSpeed = Math.round(Math.max(25, Math.min(100, (state.thermalPowerKw / nominalCap) * 100 + foulingPenalty * 12)));
+
+      // Boucle hydraulique
+      state.waterFlow = +(34.5 * mCfg.flowFactor + noise(0.2)).toFixed(1);
+      state.pumpDeltaP = +(1.45 * Math.pow(mCfg.flowFactor, 1.4) + noise(0.02)).toFixed(2);
+      // P = qv(m3/h) * 1.163 * ΔT  => ΔT = P / (qv * 1.163)
+      const calcDeltaT = state.thermalPowerKw / (state.waterFlow * 1.163);
+      state.waterDeltaT = +(Math.max(1.8, Math.min(8.5, calcDeltaT))).toFixed(1);
+
+      state.waterSupplyTemp = +(activeSetpoint + foulingPenalty * 1.4 + noise(0.1)).toFixed(1);
+      state.waterReturnTemp = state.effectiveCycle === 'COOL'
+        ? +(state.waterSupplyTemp + state.waterDeltaT).toFixed(1)
+        : +(state.waterSupplyTemp - state.waterDeltaT).toFixed(1);
+
+      // Grandeurs thermodynamiques R32
+      if (state.effectiveCycle === 'COOL') {
+        state.evapTemp = +(state.waterSupplyTemp - 4.8 + noise(0.15)).toFixed(1);
+        state.condTemp = +(state.extTemp + 13.5 + foulingPenalty * 11.5 + noise(0.2)).toFixed(1);
+      } else {
+        state.condTemp = +(state.waterSupplyTemp + 3.8 + foulingPenalty * 6.0 + noise(0.15)).toFixed(1);
+        state.evapTemp = +(state.extTemp - 6.5 - foulingPenalty * 5.0 + noise(0.2)).toFixed(1);
+      }
+
+      // Conversion approximative T° saturation R32 -> Pression (bar absolus/relatifs)
+      const tempToR32Bar = (t) => +(7.95 + 0.31 * t + 0.0042 * t * t).toFixed(1);
+      state.hpPressure = tempToR32Bar(state.condTemp);
+      state.bpPressure = Math.max(4.5, tempToR32Bar(state.evapTemp));
+
+      // Si encrassement fait dépasser le seuil HP max
+      if (state.hpPressure >= state.hpMaxThreshold) {
+        injectFault('HP_TRIP');
+        return;
+      }
+
+      state.superheat = +(6.0 + foulingPenalty * 1.8 + noise(0.2)).toFixed(1);
+      state.subcooling = +(5.0 - foulingPenalty * 1.5 + noise(0.15)).toFixed(1);
+      state.eevOpening = Math.round(Math.max(25, Math.min(98, state.compSpeed * 0.82 + foulingPenalty * 14)));
+
+      // Rendement EER / COP selon écart de température (Carnot dégradé)
+      const lift = Math.max(18, state.condTemp - state.evapTemp);
+      const baseEfficiency = state.effectiveCycle === 'COOL' ? 158 / lift : (168 / lift) + 0.35;
+      state.cop = +(Math.max(1.85, Math.min(5.40, baseEfficiency + noise(0.04)))).toFixed(2);
+
+      state.elecPowerKw = +(state.thermalPowerKw / state.cop).toFixed(1);
+
+      // Cumul énergétique
+      state.cumulativeKwh = +(state.cumulativeKwh + (state.elecPowerKw * dtSeconds) / 3600).toFixed(2);
+      state.copHistorySum += parseFloat(state.cop);
+      state.copSamplesCount += 1;
+    }
+
+    // =========================================================================
+    // 5. MISE À JOUR DE L'INTERFACE & DU SYNOPTIQUE SVG
+    // =========================================================================
+    function updateUI() {
+      const isCool = state.effectiveCycle === 'COOL';
+      const isFault = state.safetyLatched;
+
+      // Horloge
+      document.getElementById('liveClock').textContent = new Date().toLocaleTimeString('fr-FR');
+
+      // Statut global header
+      const statusBadge = document.getElementById('globalStatusBadge');
+      if (isFault) {
+        statusBadge.className = "inline-flex items-center gap-1.5 font-semibold text-red-400";
+        statusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span> DÉFAUT CRITIQUE (VERROUILLÉ)`;
+      } else if (state.activeFault === 'COIL_FOULING') {
+        statusBadge.className = "inline-flex items-center gap-1.5 font-semibold text-amber-400";
+        statusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> DÉRIVE HAUTE PRESSION`;
+      } else {
+        statusBadge.className = "inline-flex items-center gap-1.5 font-semibold text-emerald-400";
+        statusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> EN SERVICE NOMINAL`;
+      }
+
+      // Badge régime actif
+      const regimeLabel = document.getElementById('activeRegimeLabel');
+      if (isCool) {
+        regimeLabel.textContent = `CYCLE FROID (EER ${state.cop})`;
+        regimeLabel.className = "hidden sm:inline font-mono text-cyan-400";
+      } else {
+        regimeLabel.textContent = `CYCLE CHAUD PAC (COP ${state.cop})`;
+        regimeLabel.className = "hidden sm:inline font-mono text-orange-400";
+      }
+
+      // Header mini-résumé
+      const activeSet = isCool ? state.coolSetpoint : state.heatSetpoint;
+      const hwSet = document.getElementById('headerWaterSetpoint');
+      hwSet.textContent = `${activeSet.toFixed(1)} °C`;
+      hwSet.className = isCool ? "text-cyan-400" : "text-orange-400";
+      document.getElementById('headerWaterTemps').textContent = `${state.waterSupplyTemp.toFixed(1)} / ${state.waterReturnTemp.toFixed(1)} °C`;
+      document.getElementById('headerDeltaT').textContent = `${state.waterDeltaT.toFixed(1)} K`;
+      document.getElementById('headerCop').textContent = `${state.cop}`;
+
+      // Bandeau d'alerte critique
+      const banner = document.getElementById('criticalBanner');
+      if (isFault) {
+        banner.classList.remove('hidden');
+        const faultLabels = {
+          HP_TRIP: "Déclenchement Pressostat Haute Pression (> 38.0 bar) — Compresseur arrêté par sécurité matérielle.",
+          FLOW_LOSS: "Défaut Contrôleur de Débit Hydraulique (Manque d'eau) — Protection échangeur à plaques activée.",
+          ANTIFREEZE: "Alarme Antigel Échangeur à Plaques (T° sortie eau critique) — Arrêt immédiat production froid.",
+          GAS_LEAK: "Détection Fuite Fluide Frigorigène R32 en local technique — Mise en sécurité & extraction forcée."
+        };
+        document.getElementById('criticalBannerText').textContent = faultLabels[state.activeFault] || "Arrêt sécurité actif.";
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      // -----------------------------------------------------------------------
+      // MISE À JOUR DU SYNOPTIQUE SVG
+      // -----------------------------------------------------------------------
+      const pipeDischarge = document.getElementById('pipeDischarge');
+      const pipe4WayToAir = document.getElementById('pipe4WayToAir');
+      const pipeAirToEev = document.getElementById('pipeAirToEev');
+      const pipeEevToPlate = document.getElementById('pipeEevToPlate');
+      const pipePlateTo4Way = document.getElementById('pipePlateTo4Way');
+      const pipe4WayToSuction = document.getElementById('pipe4WayToSuction');
+      const pipeWaterSupply = document.getElementById('pipeWaterSupply');
+      const pipeWaterReturn = document.getElementById('pipeWaterReturn');
+
+      const speedSec = isFault ? 0 : Math.max(0.45, 2.2 - (state.compSpeed / 100) * 1.5);
+      document.documentElement.style.setProperty('--flow-speed', `${speedSec.toFixed(2)}s`);
+
+      const allFrigoPipes = [pipeDischarge, pipe4WayToAir, pipeAirToEev, pipeEevToPlate, pipePlateTo4Way, pipe4WayToSuction];
+
+      if (isFault) {
+        allFrigoPipes.forEach(p => {
+          p.classList.remove('pipe-flow-fwd', 'pipe-flow-rev');
+          p.classList.add('pipe-stopped');
+        });
+      } else {
+        allFrigoPipes.forEach(p => p.classList.remove('pipe-stopped'));
+        pipeDischarge.className.baseVal = 'pipe-flow-fwd';
+        pipe4WayToSuction.className.baseVal = 'pipe-flow-fwd';
+
+        if (isCool) {
+          // FROID : 4V -> Air (Gaz chaud HP) -> EEV (Liquide HP) -> Plaques (Diphasique BP) -> 4V (Vapeur BP)
+          pipe4WayToAir.setAttribute('stroke', '#ef4444');
+          pipe4WayToAir.className.baseVal = 'pipe-flow-fwd';
+
+          pipeAirToEev.setAttribute('stroke', '#f59e0b');
+          pipeAirToEev.className.baseVal = 'pipe-flow-fwd';
+
+          pipeEevToPlate.setAttribute('stroke', '#06b6d4');
+          pipeEevToPlate.className.baseVal = 'pipe-flow-fwd';
+
+          pipePlateTo4Way.setAttribute('stroke', '#3b82f6');
+          pipePlateTo4Way.className.baseVal = 'pipe-flow-fwd';
+        } else {
+          // CHAUD (PAC) : 4V -> Plaques (Gaz chaud HP) -> EEV (Liquide HP) -> Air (Diphasique BP) -> 4V (Vapeur BP)
+          pipePlateTo4Way.setAttribute('stroke', '#ef4444');
+          pipePlateTo4Way.className.baseVal = 'pipe-flow-rev';
+
+          pipeEevToPlate.setAttribute('stroke', '#f59e0b');
+          pipeEevToPlate.className.baseVal = 'pipe-flow-rev';
+
+          pipeAirToEev.setAttribute('stroke', '#06b6d4');
+          pipeAirToEev.className.baseVal = 'pipe-flow-rev';
+
+          pipe4WayToAir.setAttribute('stroke', '#3b82f6');
+          pipe4WayToAir.className.baseVal = 'pipe-flow-rev';
+        }
+      }
+
+      // Tuyaux hydrauliques (couleurs Froid vs Chaud)
+      if (state.activeFault === 'FLOW_LOSS') {
+        pipeWaterSupply.className.baseVal = 'pipe-stopped';
+        pipeWaterReturn.className.baseVal = 'pipe-stopped';
+      } else {
+        pipeWaterSupply.className.baseVal = 'pipe-flow-fwd';
+        pipeWaterReturn.className.baseVal = 'pipe-flow-fwd';
+        pipeWaterSupply.setAttribute('stroke', isCool ? '#06b6d4' : '#f97316');
+        pipeWaterReturn.setAttribute('stroke', isCool ? '#3b82f6' : '#fbbf24');
+      }
+
+      // Vanne 4 voies : coulissement du tiroir interne et état bobine pilote
+      const vSlider = document.getElementById('valve4WaySlider');
+      const vCoilLed = document.getElementById('valve4WayCoilLed');
+      const vCoilText = document.getElementById('valve4WayCoilText');
+      const vStateText = document.getElementById('svg4WayState');
+      if (isCool) {
+        vSlider.style.transform = 'translateX(0px)';
+        vCoilLed.setAttribute('fill', '#475569');
+        vCoilText.textContent = '0V (Repos)';
+        vCoilText.setAttribute('fill', '#94a3b8');
+        vStateText.textContent = 'TIROIR: FROID';
+        vStateText.setAttribute('fill', '#38bdf8');
+      } else {
+        vSlider.style.transform = 'translateX(-30px)';
+        vCoilLed.setAttribute('fill', '#f97316');
+        vCoilText.textContent = '230V (Excitée)';
+        vCoilText.setAttribute('fill', '#fb923c');
+        vStateText.textContent = 'TIROIR: CHAUD';
+        vStateText.setAttribute('fill', '#fb923c');
+      }
+
+      // Échangeurs couleurs et rôles
+      const airCoilRect = document.getElementById('airCoilRect');
+      const svgAirCoilRole = document.getElementById('svgAirCoilRole');
+      const airHeatLabel = document.getElementById('airHeatLabel');
+      const plateHxRect = document.getElementById('plateHxRect');
+      const svgPlateHxRole = document.getElementById('svgPlateHxRole');
+
+      if (isCool) {
+        airCoilRect.setAttribute('fill', 'url(#airCoilGradCool)');
+        svgAirCoilRole.textContent = 'CONDENSEUR';
+        svgAirCoilRole.setAttribute('fill', '#f97316');
+        airHeatLabel.textContent = 'REJET CHALEUR ↑';
+        airHeatLabel.setAttribute('fill', '#f97316');
+
+        plateHxRect.setAttribute('fill', 'url(#plateHxGradCool)');
+        svgPlateHxRole.textContent = 'ÉVAPORATEUR';
+        svgPlateHxRole.setAttribute('fill', '#06b6d4');
+      } else {
+        airCoilRect.setAttribute('fill', 'url(#airCoilGradHeat)');
+        svgAirCoilRole.textContent = 'ÉVAPORATEUR';
+        svgAirCoilRole.setAttribute('fill', '#38bdf8');
+        airHeatLabel.textContent = 'CAPTATION AIR ↓';
+        airHeatLabel.setAttribute('fill', '#38bdf8');
+
+        plateHxRect.setAttribute('fill', 'url(#plateHxGradHeat)');
+        svgPlateHxRole.textContent = 'CONDENSEUR';
+        svgPlateHxRole.setAttribute('fill', '#f97316');
+      }
+
+      // Rotation rotor compresseur et ventilateurs
+      const compRotor = document.getElementById('compRotor');
+      const compStatusLed = document.getElementById('compStatusLed');
+      const fan1 = document.getElementById('fan1Blades');
+      const fan2 = document.getElementById('fan2Blades');
+      if (isFault || state.compSpeed === 0) {
+        compRotor.classList.add('rotor-stop');
+        if (compStatusLed) compStatusLed.setAttribute('fill', '#ef4444');
+        fan1.classList.add('rotor-stop');
+        fan2.classList.add('rotor-stop');
+      } else {
+        compRotor.classList.remove('rotor-stop');
+        if (compStatusLed) compStatusLed.setAttribute('fill', '#10b981');
+        fan1.classList.remove('rotor-stop');
+        fan2.classList.remove('rotor-stop');
+        const rSpeed = Math.max(0.3, 1.8 - (state.compSpeed / 100) * 1.4);
+        document.documentElement.style.setProperty('--rotor-speed', `${rSpeed.toFixed(2)}s`);
+      }
+
+      // Valeurs numériques sur le SVG
+      const hz = Math.round(state.compSpeed * 0.8);
+      const suctionTemp = (parseFloat(state.evapTemp) + parseFloat(state.superheat)).toFixed(1);
+      document.getElementById('svgCompSpeed').textContent = isFault ? 'ARRÊT SÉCU' : `${state.compSpeed} % (${hz} Hz)`;
+      document.getElementById('svgEevOpen').textContent = `OUV: ${state.eevOpening} %`;
+      document.getElementById('svgHpVal').textContent = `${state.hpPressure} bar / ${state.condTemp}°C`;
+      document.getElementById('svgBpVal').textContent = `${state.bpPressure} bar / ${state.evapTemp}°C`;
+      document.getElementById('svgSuctionTemp').textContent = `T° Asp: ${suctionTemp > 0 ? '+' : ''}${suctionTemp}°C`;
+      document.getElementById('svgSuperheat').textContent = `Surchauffe: ${state.superheat} K`;
+      document.getElementById('svgSubcool').textContent = `Sous-refr.: ${state.subcooling} K`;
+
+      document.getElementById('svgPumpFlow').textContent = `${state.waterFlow} m³/h`;
+      document.getElementById('svgBuildingLoad').textContent = `${state.thermalPowerKw} kW`;
+      document.getElementById('svgBuildingLoad').setAttribute('fill', isCool ? '#38bdf8' : '#fb923c');
+      document.getElementById('svgBuildingMode').textContent = `MODE ${state.buildingMode}`;
+      document.getElementById('svgDeltaP').textContent = `ΔP: ${state.pumpDeltaP} bar`;
+
+      const flowSwText = document.getElementById('svgFlowSwitch');
+      if (state.safeties.flowSwitch) {
+        flowSwText.textContent = 'DÉBIT: OK';
+        flowSwText.setAttribute('fill', '#10b981');
+      } else {
+        flowSwText.textContent = 'DÉFAUT DÉBIT !';
+        flowSwText.setAttribute('fill', '#ef4444');
+      }
+
+      const supTxt = document.getElementById('svgWaterSupplyTemp');
+      supTxt.textContent = `${state.waterSupplyTemp.toFixed(1)} °C (Cons: ${activeSet.toFixed(1)})`;
+      supTxt.setAttribute('fill', isCool ? '#06b6d4' : '#f97316');
+
+      document.getElementById('svgWaterReturnTemp').textContent = `${state.waterReturnTemp.toFixed(1)} °C (ΔT ${state.waterDeltaT}K)`;
+
+      // Cartes KPI sous le synoptique
+      document.getElementById('kpiHp').textContent = `${state.hpPressure} bar / ${state.condTemp} °C`;
+      document.getElementById('kpiBp').textContent = `${state.bpPressure} bar / ${state.evapTemp} °C`;
+      document.getElementById('kpiShSc').textContent = `${state.superheat} K / ${state.subcooling} K`;
+      document.getElementById('kpiComp').textContent = isFault ? 'ARRÊT SÉCURITÉ' : `${state.compSpeed} % • ${hz} Hz`;
+      document.getElementById('kpiWaterFlow').textContent = `${state.waterFlow} m³/h • ${state.pumpDeltaP} b`;
+      document.getElementById('kpiCopCard').textContent = `${state.cop} (${state.thermalPowerKw} kW)`;
+
+      // Mise à jour panneau inspection organe + sécurités + énergie
+      renderSelectedOrganPanel();
+      renderSafetiesGrid();
+      updateEnergyTabKPIs();
+    }
+
+    // =========================================================================
+    // 6. RENDU PANNEAU D'INSPECTION D'ORGANE
+    // =========================================================================
+    function selectOrgan(organKey) {
+      state.selectedOrgan = organKey;
+
+      // Surlignage SVG
+      document.querySelectorAll('.svg-organ').forEach(el => el.classList.remove('selected-organ'));
+      const targetSvg = document.getElementById(`organ_${organKey}`);
+      if (targetSvg) targetSvg.classList.add('selected-organ');
+
+      // Pills
+      document.querySelectorAll('.organ-pill').forEach(btn => {
+        if (btn.dataset.organ === organKey) {
+          btn.className = "organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-cyan-300 border border-cyan-500/40";
+        } else {
+          btn.className = "organ-pill px-2.5 py-1 rounded-lg text-xs font-medium bg-[#0b0f17] text-slate-400 border border-slate-800 hover:text-slate-200";
+        }
+      });
+
+      renderSelectedOrganPanel();
+    }
+
+    function renderSelectedOrganPanel() {
+      const key = state.selectedOrgan;
+      const meta = organsMetadata[key];
+      const isCool = state.effectiveCycle === 'COOL';
+      const isFault = state.safetyLatched;
+
+      document.getElementById('organPanelTitle').textContent = meta.title;
+      document.getElementById('organPanelDesc').textContent = meta.desc;
+      document.getElementById('organMaintenanceTip').textContent = meta.tip;
+
+      const badge = document.getElementById('organPanelBadge');
+      if (isFault) {
+        badge.textContent = "ARRÊT SÉCU";
+        badge.className = "font-mono text-xs px-2.5 py-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/40 font-semibold";
+      } else {
+        badge.textContent = "NOMINAL";
+        badge.className = "font-mono text-xs px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold";
+      }
+
+      // Contexte et métriques dynamiques selon l'organe
+      let contextText = "";
+      let metrics = [];
+
+      switch (key) {
+        case 'compressor':
+          contextText = isFault
+            ? "Compresseur à l'arrêt suite au déclenchement de la chaîne de sécurité."
+            : `Compression R32 de ${state.bpPressure} bar vers ${state.hpPressure} bar à ${state.compSpeed}% de charge.`;
+          metrics = [
+            { label: "Fréquence Inverter", val: `${Math.round(state.compSpeed * 0.8)} Hz (${state.compSpeed} %)` },
+            { label: "Pression Refoulement HP", val: `${state.hpPressure} bar` },
+            { label: "Pression Aspiration BP", val: `${state.bpPressure} bar` },
+            { label: "Puissance Électrique", val: `${state.elecPowerKw} kWe` }
+          ];
+          break;
+        case 'four_way':
+          contextText = isCool
+            ? "Bobine désexcitée : gaz chaud dirigé vers la batterie extérieure (Mode Froid)."
+            : "Bobine alimentée (230V AC) : gaz chaud inversé vers l'échangeur à plaques (Mode PAC).";
+          metrics = [
+            { label: "Position active", val: isCool ? "Voie Froid (Refroidissement)" : "Voie Chaud (Pompe à Chaleur)" },
+            { label: "ΔP différentiel moteur", val: `${(state.hpPressure - state.bpPressure).toFixed(1)} bar` },
+            { label: "État bobine pilote", val: isCool ? "0 V (Repos)" : "230 V (Excitée)" }
+          ];
+          break;
+        case 'air_coil':
+          contextText = isCool
+            ? `Fonction Condenseur : rejet de ${(parseFloat(state.thermalPowerKw) + parseFloat(state.elecPowerKw)).toFixed(1)} kW sur l'air à ${state.extTemp}°C.`
+            : `Fonction Évaporateur : captation thermique sur l'air extérieur à ${state.extTemp}°C.`;
+          metrics = [
+            { label: "Rôle thermodynamique", val: isCool ? "Condenseur Air" : "Évaporateur Air" },
+            { label: "Température Air Extérieur", val: `${state.extTemp.toFixed(1)} °C` },
+            { label: "Température Fluide", val: isCool ? `${state.condTemp} °C` : `${state.evapTemp} °C` },
+            { label: "Ventilateurs EC", val: isFault ? "0 % (Arrêt)" : `${Math.min(100, state.compSpeed + 8)} %` }
+          ];
+          break;
+        case 'eev':
+          contextText = `Détente de ${state.hpPressure} bar vers ${state.bpPressure} bar avec régulation PID de la surchauffe.`;
+          metrics = [
+            { label: "Ouverture Vanne Pas-à-Pas", val: `${state.eevOpening} %` },
+            { label: "Surchauffe mesurée", val: `${state.superheat} K (Consigne 6.0 K)` },
+            { label: "Sous-refroidissement entrée", val: `${state.subcooling} K` }
+          ];
+          break;
+        case 'plate_hx':
+          contextText = isCool
+            ? `Évaporateur eau glacée : refroidissement de ${state.waterReturnTemp}°C à ${state.waterSupplyTemp}°C.`
+            : `Condenseur eau chaude : réchauffage de ${state.waterReturnTemp}°C à ${state.waterSupplyTemp}°C.`;
+          metrics = [
+            { label: "Rôle thermodynamique", val: isCool ? "Évaporateur Eau" : "Condenseur Eau" },
+            { label: "T° Départ / Retour Eau", val: `${state.waterSupplyTemp}°C / ${state.waterReturnTemp}°C` },
+            { label: "Puissance échangée", val: `${state.thermalPowerKw} kW` },
+            { label: "Sécurité Antigel", val: state.safeties.antifreeze ? "OK (> +4°C)" : "DÉFAUT ANTIGEL" }
+          ];
+          break;
+        case 'pump':
+        case 'building':
+          contextText = `Distribution hydraulique en mode ${state.buildingMode} avec débit de ${state.waterFlow} m³/h.`;
+          metrics = [
+            { label: "Débit Hydraulique", val: `${state.waterFlow} m³/h` },
+            { label: "Pression Différentielle ΔP", val: `${state.pumpDeltaP} bar` },
+            { label: "Écart Température ΔT", val: `${state.waterDeltaT} K` },
+            { label: "Contrôleur de débit", val: state.safeties.flowSwitch ? "Contact Fermé (OK)" : "Contact Ouvert (DÉFAUT)" }
+          ];
+          break;
+      }
+
+      document.getElementById('organCycleContext').textContent = contextText;
+
+      const listEl = document.getElementById('organMetricsList');
+      listEl.innerHTML = metrics.map(m => `
+        <div class="flex items-center justify-between bg-[#0b0f17] px-3 py-2 rounded-lg border border-slate-800/80 text-xs">
+          <span class="text-slate-400">${m.label}</span>
+          <span class="font-mono font-semibold text-slate-100">${m.val}</span>
+        </div>
+      `).join('');
+    }
+
+    // =========================================================================
+    // 7. GESTION DES SÉCURITÉS, INJECTION DE PANNES & JOURNAL
+    // =========================================================================
+    function renderSafetiesGrid() {
+      const items = [
+        { key: 'hpSwitch', name: "Pressostat Haute Pression", detail: `Seuil ${state.hpMaxThreshold} bar`, ok: state.safeties.hpSwitch },
+        { key: 'bpSwitch', name: "Pressostat Basse Pression", detail: `Seuil ${state.bpMinThreshold} bar`, ok: state.safeties.bpSwitch },
+        { key: 'flowSwitch', name: "Contrôleur Débit Eau", detail: `Débit ${state.waterFlow} m³/h`, ok: state.safeties.flowSwitch },
+        { key: 'antifreeze', name: "Sécurité Antigel Plaques", detail: "Seuil +3.5 °C", ok: state.safeties.antifreeze },
+        { key: 'compThermal', name: "Protection Inverter / Klixon", detail: "I max / T° refoul.", ok: state.safeties.compThermal },
+        { key: 'gasDetector', name: "Détecteur Fuite R32", detail: "Seuil 10% LIE", ok: state.safeties.gasDetector }
+      ];
+
+      const grid = document.getElementById('safetyGrid');
+      grid.innerHTML = items.map(item => `
+        <div class="p-2.5 rounded-xl border ${item.ok ? 'bg-[#0b0f17] border-slate-800' : 'bg-red-950/50 border-red-500/60'} flex items-center justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold ${item.ok ? 'text-slate-200' : 'text-red-300'}">${item.name}</div>
+            <div class="text-[10px] font-mono text-slate-400">${item.detail}</div>
+          </div>
+          <span class="font-mono text-[11px] font-bold px-2 py-0.5 rounded ${item.ok ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-red-500 text-white'}">
+            ${item.ok ? 'OK' : 'DÉFAUT'}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    function injectFault(faultCode) {
+      state.activeFault = faultCode;
+      const messages = {
+        HP_TRIP: "ALARME CRITIQUE : Déclenchement Pressostat Haute Pression (> 38.0 bar) !",
+        FLOW_LOSS: "ALARME CRITIQUE : Perte de débit hydraulique (Flow-switch ouvert) !",
+        ANTIFREEZE: "ALARME CRITIQUE : Déclenchement sécurité antigel échangeur à plaques !",
+        GAS_LEAK: "ALARME CRITIQUE : Détection fuite fluide R32 en local technique !",
+        COIL_FOULING: "AVERTISSEMENT : Encrassement batterie extérieure — dérive HP & perte rendement."
+      };
+      addLog(faultCode === 'COIL_FOULING' ? 'WARN' : 'ALARM', messages[faultCode]);
+      computeSimulationStep(0);
+      updateUI();
+    }
+
+    function resetFaultCondition() {
+      if (!state.activeFault) return;
+      state.activeFault = null;
+      addLog('INFO', "Condition physique rétablie sur l'installation (prêt pour acquittement).");
+      computeSimulationStep(0);
+      updateUI();
+    }
+
+    function acknowledgeAndResetAlarms() {
+      if (state.activeFault && state.activeFault !== 'COIL_FOULING') {
+        addLog('WARN', "Réarmement refusé : la cause du défaut matériel est toujours active !");
+        return;
+      }
+      state.activeFault = null;
+      state.safetyLatched = false;
+      addLog('OK', "Acquittement opérateur & réarmement chaîne de sécurité effectués. Redémarrage groupe.");
+      computeSimulationStep(0);
+      updateUI();
+    }
+
+    function renderLogs() {
+      const container = document.getElementById('eventLogList');
+      const alarmCount = state.logs.filter(l => l.level === 'ALARM').length;
+      document.getElementById('alarmCounterBadge').textContent = `${alarmCount} alarme(s)`;
+
+      const badgeStyles = {
+        INFO: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+        OK: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+        WARN: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+        ALARM: 'bg-red-500/20 text-red-300 border-red-500/40'
+      };
+
+      container.innerHTML = state.logs.map(log => `
+        <div class="p-2 rounded-lg bg-[#0b0f17] border border-slate-800/90 flex items-start gap-2">
+          <span class="text-slate-500 shrink-0">${log.time}</span>
+          <span class="px-1.5 py-0.2 rounded border text-[10px] font-bold shrink-0 ${badgeStyles[log.level]}">${log.level}</span>
+          <span class="text-slate-300 leading-snug">${log.message}</span>
+        </div>
+      `).join('');
+    }
+
+    // =========================================================================
+    // 8. GRAPHIQUES CHART.JS & ANALYSE ÉNERGÉTIQUE
+    // =========================================================================
+    let powerChartInstance = null;
+    let tempChartInstance = null;
+
+    function initCharts() {
+      const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#cbd5e1', font: { family: 'JetBrains Mono', size: 11 } }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 8 },
+            grid: { color: 'rgba(30, 41, 59, 0.5)' }
+          },
+          y: {
+            ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } },
+            grid: { color: 'rgba(30, 41, 59, 0.5)' }
+          }
+        }
+      };
+
+      const ctxPower = document.getElementById('powerChart').getContext('2d');
+      powerChartInstance = new Chart(ctxPower, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Puissance Thermique/Frigo (kW)',
+              data: [],
+              borderColor: '#06b6d4',
+              backgroundColor: 'rgba(6, 182, 212, 0.12)',
+              fill: true,
+              tension: 0.3,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Puissance Électrique (kWe)',
+              data: [],
+              borderColor: '#f59e0b',
+              backgroundColor: 'transparent',
+              tension: 0.3,
+              yAxisID: 'y'
+            },
+            {
+              label: 'EER / COP',
+              data: [],
+              borderColor: '#10b981',
+              borderDash: [5, 5],
+              tension: 0.3,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          ...commonOptions,
+          scales: {
+            ...commonOptions.scales,
+            y1: {
+              position: 'right',
+              min: 0,
+              max: 6,
+              ticks: { color: '#10b981', font: { family: 'JetBrains Mono', size: 10 } },
+              grid: { drawOnChartArea: false }
+            }
+          }
+        }
+      });
+
+      const ctxTemp = document.getElementById('tempChart').getContext('2d');
+      tempChartInstance = new Chart(ctxTemp, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'T° Extérieure (°C)', data: [], borderColor: '#94a3b8', borderDash: [4, 4], tension: 0.25 },
+            { label: 'T° Départ Eau (°C)', data: [], borderColor: '#06b6d4', tension: 0.25 },
+            { label: 'T° Retour Eau (°C)', data: [], borderColor: '#3b82f6', tension: 0.25 },
+            { label: 'T° Condensation (°C)', data: [], borderColor: '#ef4444', tension: 0.25 },
+            { label: 'T° Évaporation (°C)', data: [], borderColor: '#a855f7', tension: 0.25 }
+          ]
+        },
+        options: commonOptions
+      });
+    }
+
+    function pushChartData() {
+      if (!powerChartInstance || !tempChartInstance) return;
+      const label = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const maxPoints = 24;
+
+      // Power Chart
+      powerChartInstance.data.labels.push(label);
+      powerChartInstance.data.datasets[0].data.push(state.thermalPowerKw);
+      powerChartInstance.data.datasets[1].data.push(state.elecPowerKw);
+      powerChartInstance.data.datasets[2].data.push(state.cop);
+
+      if (powerChartInstance.data.labels.length > maxPoints) {
+        powerChartInstance.data.labels.shift();
+        powerChartInstance.data.datasets.forEach(ds => ds.data.shift());
+      }
+      powerChartInstance.update('none');
+
+      // Temp Chart
+      tempChartInstance.data.labels.push(label);
+      tempChartInstance.data.datasets[0].data.push(state.extTemp);
+      tempChartInstance.data.datasets[1].data.push(state.waterSupplyTemp);
+      tempChartInstance.data.datasets[2].data.push(state.waterReturnTemp);
+      tempChartInstance.data.datasets[3].data.push(state.condTemp);
+      tempChartInstance.data.datasets[4].data.push(state.evapTemp);
+
+      if (tempChartInstance.data.labels.length > maxPoints) {
+        tempChartInstance.data.labels.shift();
+        tempChartInstance.data.datasets.forEach(ds => ds.data.shift());
+      }
+      tempChartInstance.update('none');
+    }
+
+    function updateEnergyTabKPIs() {
+      const isCool = state.effectiveCycle === 'COOL';
+      document.getElementById('energyThermalKw').textContent = `${state.thermalPowerKw} kW`;
+      document.getElementById('energyThermalKw').className = `font-mono text-2xl font-bold ${isCool ? 'text-cyan-400' : 'text-orange-400'}`;
+
+      const tag = document.getElementById('energyThermalTag');
+      tag.textContent = isCool ? 'FROID' : 'CHAUD PAC';
+      tag.className = `text-[11px] font-mono px-2 py-0.5 rounded ${isCool ? 'bg-cyan-500/15 text-cyan-300' : 'bg-orange-500/15 text-orange-300'}`;
+
+      document.getElementById('energyElecKw').textContent = `${state.elecPowerKw} kWe`;
+      document.getElementById('energyCopInst').textContent = `${state.cop}`;
+      const avgCop = (state.copHistorySum / state.copSamplesCount).toFixed(2);
+      document.getElementById('energyCopAvg').textContent = `Moy: ${avgCop}`;
+      document.getElementById('energyKwhTotal').textContent = `${state.cumulativeKwh.toFixed(1)} kWh`;
+
+      const costHour = (state.elecPowerKw * state.kwhPrice).toFixed(2);
+      const costDay = Math.round(costHour * 24);
+      document.getElementById('energyCostHour').textContent = `${costHour} €/h`;
+      document.getElementById('energyCostDay').textContent = `~${costDay} €/j`;
+      document.getElementById('energyTariffLabel').textContent = `Base tarifaire : ${state.kwhPrice.toFixed(3)} €/kWh`;
+    }
+
+    function toggleSimulationPause() {
+      state.simPaused = !state.simPaused;
+      const btn = document.getElementById('btnToggleSim');
+      btn.textContent = state.simPaused ? '▶ Reprendre Acquisition' : '⏸ Pause Acquisition';
+    }
+
+    function resetChartsHistory() {
+      if (!powerChartInstance || !tempChartInstance) return;
+      powerChartInstance.data.labels = [];
+      powerChartInstance.data.datasets.forEach(d => d.data = []);
+      powerChartInstance.update();
+
+      tempChartInstance.data.labels = [];
+      tempChartInstance.data.datasets.forEach(d => d.data = []);
+      tempChartInstance.update();
+    }
+
+    // =========================================================================
+    // 9. MODULE PÉDAGOGIQUE : 10 CAS PRATIQUES CVC / GTB
+    // =========================================================================
+    function renderTrainingModule() {
+      const listContainer = document.getElementById('caseListContainer');
+      const completedCount = Object.keys(state.completedCases).length;
+      const correctCount = Object.values(state.completedCases).filter(c => c.correct).length;
+
+      document.getElementById('trainingScorePill').textContent = `${correctCount}/10`;
+      document.getElementById('trainingScoreBig').textContent = `${correctCount} / 10`;
+      document.getElementById('trainingProgressText').textContent = `${completedCount * 10}% traité`;
+
+      listContainer.innerHTML = trainingCases.map((c, idx) => {
+        const isSelected = idx === state.selectedCaseIndex;
+        const result = state.completedCases[c.id];
+        let statusIcon = `<span class="w-2 h-2 rounded-full bg-slate-600"></span>`;
+        if (result) {
+          statusIcon = result.correct
+            ? `<span class="text-emerald-400 font-bold">✓</span>`
+            : `<span class="text-red-400 font-bold">✕</span>`;
+        }
+
+        return `
+          <button onclick="selectTrainingCase(${idx})" class="w-full text-left p-3 rounded-xl border transition flex items-start justify-between gap-2 ${isSelected ? 'bg-slate-800 border-cyan-500/50' : 'bg-[#0b0f17] border-slate-800/80 hover:border-slate-700'}">
+            <div>
+              <span class="text-[10px] font-mono uppercase text-cyan-400 block">${c.category}</span>
+              <span class="text-xs font-semibold ${isSelected ? 'text-white' : 'text-slate-300'}">${c.title}</span>
+            </div>
+            <div class="shrink-0 mt-1">${statusIcon}</div>
+          </button>
+        `;
+      }).join('');
+
+      const activeCase = trainingCases[state.selectedCaseIndex];
+      const existingAnswer = state.completedCases[activeCase.id];
+      const detailContainer = document.getElementById('caseDetailContainer');
+
+      const readingsRows = activeCase.readings.map(r => {
+        const badgeClass = r.status === 'alarm'
+          ? 'text-red-400 font-bold'
+          : (r.status === 'warn' ? 'text-amber-400 font-bold' : 'text-emerald-400');
+        return `
+          <tr class="border-b border-slate-800/80">
+            <td class="py-2 px-3 text-slate-300 font-medium">${r.param}</td>
+            <td class="py-2 px-3 font-mono ${badgeClass}">${r.measured}</td>
+            <td class="py-2 px-3 font-mono text-slate-400">${r.nominal}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const optionsHtml = activeCase.options.map((opt, oIdx) => {
+        let btnClass = "bg-[#0b0f17] border-slate-800 hover:border-cyan-500/50 text-slate-200";
+        if (existingAnswer) {
+          if (oIdx === activeCase.correctIndex) {
+            btnClass = "bg-emerald-950/60 border-emerald-500 text-emerald-200";
+          } else if (oIdx === existingAnswer.chosenIndex && !existingAnswer.correct) {
+            btnClass = "bg-red-950/60 border-red-500 text-red-200";
+          } else {
+            btnClass = "bg-[#0b0f17] border-slate-800/50 text-slate-500";
+          }
+        }
+
+        return `
+          <button onclick="submitCaseAnswer(${activeCase.id}, ${oIdx})" class="w-full text-left p-3.5 rounded-xl border text-xs sm:text-sm font-medium transition flex items-center gap-3 ${btnClass}">
+            <span class="w-6 h-6 rounded-lg bg-slate-800 font-mono text-xs flex items-center justify-center shrink-0">${String.fromCharCode(65 + oIdx)}</span>
+            <span>${opt}</span>
+          </button>
+        `;
+      }).join('');
+
+      detailContainer.innerHTML = `
+        <div class="flex flex-wrap items-start justify-between gap-2 pb-3 border-b border-slate-800">
+          <div>
+            <span class="text-xs font-mono text-cyan-400 uppercase font-bold">${activeCase.category}</span>
+            <h3 class="text-base sm:text-lg font-bold text-white mt-0.5">${activeCase.title}</h3>
+          </div>
+          <button onclick="applyCaseToSynoptic(${state.selectedCaseIndex})" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-xs font-semibold text-cyan-300 transition">
+            ↗ Simuler contexte sur Synoptique
+          </button>
+        </div>
+
+        <div class="bg-[#0b0f17] border border-slate-800 rounded-xl p-3.5">
+          <span class="text-[11px] font-mono uppercase text-slate-400 font-bold">Mise en situation terrain :</span>
+          <p class="text-xs sm:text-sm text-slate-200 mt-1 leading-relaxed">${activeCase.context}</p>
+        </div>
+
+        <div>
+          <span class="text-[11px] font-mono uppercase text-slate-400 font-bold block mb-2">Relevés GTB & Paramètres Frigorifiques :</span>
+          <div class="overflow-x-auto rounded-xl border border-slate-800">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-[#0b0f17] text-slate-400 font-mono uppercase text-[11px]">
+                <tr>
+                  <th class="py-2 px-3">Point de mesure GTB</th>
+                  <th class="py-2 px-3">Valeur Relevée</th>
+                  <th class="py-2 px-3">Référence Nominale</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                ${readingsRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          <p class="text-sm font-bold text-white">${activeCase.question}</p>
+          <div class="space-y-2">
+            ${optionsHtml}
+          </div>
+        </div>
+
+        ${existingAnswer ? `
+          <div class="p-4 rounded-xl border ${existingAnswer.correct ? 'bg-emerald-950/40 border-emerald-500/40' : 'bg-amber-950/40 border-amber-500/40'} space-y-1.5">
+            <div class="text-xs font-bold uppercase tracking-wider ${existingAnswer.correct ? 'text-emerald-400' : 'text-amber-400'}">
+              ${existingAnswer.correct ? '✓ Diagnostic validé — Analyse d\'ingénieur :' : '⚠ Diagnostic à revoir — Analyse technique :'}
+            </div>
+            <p class="text-xs sm:text-sm text-slate-200 leading-relaxed">${activeCase.explanation}</p>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function selectTrainingCase(index) {
+      state.selectedCaseIndex = index;
+      renderTrainingModule();
+    }
+
+    function submitCaseAnswer(caseId, optionIndex) {
+      const c = trainingCases.find(item => item.id === caseId);
+      if (!c) return;
+      state.completedCases[caseId] = {
+        correct: optionIndex === c.correctIndex,
+        chosenIndex: optionIndex
+      };
+      renderTrainingModule();
+    }
+
+    function applyCaseToSynoptic(index) {
+      const c = trainingCases[index];
+      if (!c || !c.simPreset) return;
+      state.extTemp = c.simPreset.extTemp;
+      document.getElementById('extTempSlider').value = state.extTemp;
+      document.getElementById('extTempDisplay').textContent = `${state.extTemp > 0 ? '+' : ''}${state.extTemp.toFixed(1)} °C`;
+      setThermalMode(c.simPreset.mode);
+
+      if (c.simPreset.fault) {
+        injectFault(c.simPreset.fault);
+      } else {
+        state.activeFault = null;
+        state.safetyLatched = false;
+      }
+      addLog('INFO', `Chargement contexte pédagogique : ${c.title}`);
+      switchTab('supervision');
+      computeSimulationStep(0);
+      updateUI();
+    }
+
+    // =========================================================================
+    // 10. CONTRÔLES UTILISATEUR, ONGLETS, PARAMÈTRES & EXPORT PDF
+    // =========================================================================
+    function setThermalMode(mode) {
+      state.thermalModeSelect = mode;
+      const btnCool = document.getElementById('btnModeCool');
+      const btnHeat = document.getElementById('btnModeHeat');
+      const btnAuto = document.getElementById('btnModeAuto');
+
+      const baseClass = "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-400 hover:text-slate-200";
+      btnCool.className = baseClass;
+      btnHeat.className = baseClass;
+      btnAuto.className = baseClass;
+
+      if (mode === 'COOL') {
+        btnCool.className = "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40";
+      } else if (mode === 'HEAT') {
+        btnHeat.className = "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-orange-500/20 text-orange-300 border border-orange-500/40";
+      } else {
+        btnAuto.className = "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-purple-500/20 text-purple-300 border border-purple-500/40";
+      }
+
+      addLog('INFO', `Sélection régime thermique GTB : ${mode}`);
+      computeSimulationStep(0);
+      updateUI();
+    }
+
+    function setBuildingMode(mode) {
+      state.buildingMode = mode;
+      addLog('INFO', `Changement planning occupation bâtiment -> ${mode}`);
+      computeSimulationStep(0);
+      updateUI();
+    }
+
+    function switchTab(tabName) {
+      const views = {
+        supervision: document.getElementById('viewSupervision'),
+        energy: document.getElementById('viewEnergy'),
+        training: document.getElementById('viewTraining')
+      };
+      const btns = {
+        supervision: document.getElementById('tabBtnSupervision'),
+        energy: document.getElementById('tabBtnEnergy'),
+        training: document.getElementById('tabBtnTraining')
+      };
+
+      Object.keys(views).forEach(k => {
+        if (k === tabName) {
+          views[k].classList.remove('hidden');
+          btns[k].className = "px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-slate-800 text-cyan-400 border border-slate-700/80 flex items-center gap-2 whitespace-nowrap transition";
+        } else {
+          views[k].classList.add('hidden');
+          btns[k].className = "px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap transition";
+        }
+      });
+
+      if (tabName === 'training') {
+        renderTrainingModule();
+      }
+    }
+
+    function toggleSettingsModal(show) {
+      const modal = document.getElementById('settingsModal');
+      if (show) {
+        document.getElementById('cfgCoolSetpoint').value = state.coolSetpoint;
+        document.getElementById('cfgHeatSetpoint').value = state.heatSetpoint;
+        document.getElementById('cfgAutoThreshold').value = state.autoSwitchTemp;
+        document.getElementById('cfgTargetDeltaT').value = state.targetDeltaT;
+        document.getElementById('cfgHpMax').value = state.hpMaxThreshold;
+        document.getElementById('cfgKwhPrice').value = state.kwhPrice;
+        modal.classList.remove('hidden');
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function saveSettings() {
+      state.coolSetpoint = parseFloat(document.getElementById('cfgCoolSetpoint').value) || 7.0;
+      state.heatSetpoint = parseFloat(document.getElementById('cfgHeatSetpoint').value) || 45.0;
+      state.autoSwitchTemp = parseFloat(document.getElementById('cfgAutoThreshold').value) || 16.0;
+      state.targetDeltaT = parseFloat(document.getElementById('cfgTargetDeltaT').value) || 5.0;
+      state.hpMaxThreshold = parseFloat(document.getElementById('cfgHpMax').value) || 38.0;
+      state.kwhPrice = parseFloat(document.getElementById('cfgKwhPrice').value) || 0.18;
+
+      toggleSettingsModal(false);
+      addLog('OK', `Consignes GTB mises à jour (Froid: ${state.coolSetpoint}°C, Chaud: ${state.heatSetpoint}°C, HP Max: ${state.hpMaxThreshold} bar).`);
+      computeSimulationStep(0);
+      updateUI();
+    }
+
+    function exportInterventionPDF() {
+      const reportArea = document.getElementById('printReportArea');
+      const nowStr = new Date().toLocaleString('fr-FR');
+      const correctCount = Object.values(state.completedCases).filter(c => c.correct).length;
+
+      const logsHtml = state.logs.slice(0, 12).map(l => `
+        <tr>
+          <td style="padding:4px 8px; border-bottom:1px solid #e2e8f0; font-family:monospace;">${l.time}</td>
+          <td style="padding:4px 8px; border-bottom:1px solid #e2e8f0; font-weight:bold;">${l.level}</td>
+          <td style="padding:4px 8px; border-bottom:1px solid #e2e8f0;">${l.message}</td>
+        </tr>
+      `).join('');
+
+      reportArea.innerHTML = `
+        <div style="font-family: Inter, sans-serif; color: #0f172a;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #0284c7; padding-bottom:12px; margin-bottom:20px;">
+            <div>
+              <h1 style="font-size:20px; font-weight:800; margin:0;">RAPPORT D'INTERVENTION & RELEVÉ GTB</h1>
+              <p style="font-size:12px; color:#475569; margin:4px 0 0 0;">Supervision GTB Frigorifique Réversible — Dexforma • PAC Air/Eau R32 (240 kW)</p>
+            </div>
+            <div style="text-align:right; font-size:12px; font-family:monospace;">
+              <div><strong>Date :</strong> ${nowStr}</div>
+              <div><strong>Statut :</strong> ${state.safetyLatched ? 'DÉFAUT VERROUILLÉ' : 'EN SERVICE'}</div>
+            </div>
+          </div>
+
+          <h2 style="font-size:14px; text-transform:uppercase; color:#0369a1; margin-bottom:8px;">1. Conditions d'Exploitation & Télémesures Instantanées</h2>
+          <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:20px;">
+            <tr style="background:#f1f5f9;">
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Régime Thermique Actif</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.effectiveCycle === 'COOL' ? 'FROID (Refroidissement)' : 'CHAUD (Pompe à Chaleur)'}</td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Mode Bâtiment</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.buildingMode}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Température Extérieure</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.extTemp.toFixed(1)} °C</td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Régime Compresseur</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.compSpeed} %</td>
+            </tr>
+            <tr style="background:#f1f5f9;">
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Haute Pression (HP) / T° Cond.</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.hpPressure} bar / ${state.condTemp} °C</td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Basse Pression (BP) / T° Évap.</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.bpPressure} bar / ${state.evapTemp} °C</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Surchauffe / Sous-refroid.</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.superheat} K / ${state.subcooling} K</td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Ouverture Détendeur EEV</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.eevOpening} %</td>
+            </tr>
+            <tr style="background:#f1f5f9;">
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>T° Départ / Retour Eau</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.waterSupplyTemp} °C / ${state.waterReturnTemp} °C (ΔT ${state.waterDeltaT} K)</td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Débit & ΔP Hydraulique</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.waterFlow} m³/h • ${state.pumpDeltaP} bar</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Puissance Thermique / Élec.</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;">${state.thermalPowerKw} kW / ${state.elecPowerKw} kWe</td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>Performance (EER / COP)</strong></td>
+              <td style="padding:6px 8px; border:1px solid #cbd5e1;"><strong>${state.cop}</strong></td>
+            </tr>
+          </table>
+
+          <h2 style="font-size:14px; text-transform:uppercase; color:#0369a1; margin-bottom:8px;">2. Journal Récent des Événements & Alarmes GTB</h2>
+          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:20px;">
+            <thead>
+              <tr style="background:#e2e8f0; text-align:left;">
+                <th style="padding:5px 8px;">Heure</th>
+                <th style="padding:5px 8px;">Niveau</th>
+                <th style="padding:5px 8px;">Événement</th>
+              </tr>
+            </thead>
+            <tbody>${logsHtml}</tbody>
+          </table>
+
+          <div style="display:flex; justify-content:space-between; font-size:12px; border-top:1px solid #cbd5e1; padding-top:12px;">
+            <div><strong>Évaluation Module Cas Pratiques :</strong> ${correctCount} / 10 validés</div>
+            <div><strong>Visa Technicien CVC / Frigoriste :</strong> _______________________</div>
+          </div>
+        </div>
+      `;
+
+      addLog('INFO', "Génération du rapport d'intervention PDF lancée.");
+      window.print();
+    }
+
+    // =========================================================================
+    // 11. INITIALISATION AU CHARGEMENT DE LA PAGE
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      // Écouteur curseur température extérieure
+      const slider = document.getElementById('extTempSlider');
+      slider.addEventListener('input', (e) => {
+        state.extTemp = parseFloat(e.target.value);
+        document.getElementById('extTempDisplay').textContent = `${state.extTemp > 0 ? '+' : ''}${state.extTemp.toFixed(1)} °C`;
+        computeSimulationStep(0);
+        updateUI();
+      });
+
+      initCharts();
+      addLog('OK', "Initialisation Supervision GTB Dexforma — Communication automate Modbus/BACnet active.");
+      selectOrgan('compressor');
+      renderTrainingModule();
+
+      // Amorçage de l'historique graphique avec 8 points initiaux
+      for (let i = 0; i < 8; i++) {
+        computeSimulationStep(1.5);
+        pushChartData();
+      }
+      updateUI();
+
+      // Boucle temps réel (1.5s)
+      setInterval(() => {
+        if (!state.simPaused) {
+          computeSimulationStep(1.5);
+          pushChartData();
+        }
+        updateUI();
+      }, 1500);
+    });
+  </script>
+</body>
+</html>
