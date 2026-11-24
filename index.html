@@ -190,9 +190,29 @@
         <!-- Identité & Statut Global -->
         <div class="flex items-center justify-between sm:justify-start gap-3">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/40 flex items-center justify-center shrink-0">
-              <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m0-18l-3 3m3-3l3 3m-3 15l-3-3m3 3l3-3M3 12h18M3 12l3-3m-3 3l3 3m15-3l-3-3m3 3l-3 3"/>
+            <div class="w-11 h-11 rounded-xl bg-black border border-cyan-500/40 flex items-center justify-center shrink-0 overflow-hidden shadow-inner shadow-cyan-500/10" title="Dexforma">
+              <svg class="w-full h-full" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-label="Logo Dexforma">
+                <rect width="120" height="120" fill="#000000"/>
+                <!-- Ruban d'ondes cyan en arrière-plan -->
+                <g fill="none" stroke="#00b4d8" stroke-width="0.65" opacity="0.55">
+                  <path d="M -8 58 C 14 44, 34 74, 58 76 C 82 78, 98 54, 128 48"/>
+                  <path d="M -8 61 C 15 47, 35 77, 59 79 C 83 81, 99 57, 128 51"/>
+                  <path d="M -8 64 C 16 50, 36 80, 60 82 C 84 84, 100 60, 128 54"/>
+                  <path d="M -8 67 C 17 53, 37 83, 61 85 C 85 87, 101 63, 128 57"/>
+                  <path d="M -8 70 C 18 56, 38 86, 62 88 C 86 90, 102 66, 128 60"/>
+                  <path d="M -8 73 C 19 59, 39 89, 63 91 C 87 93, 103 69, 128 63"/>
+                  <path d="M -8 76 C 20 62, 40 92, 64 94 C 88 96, 104 72, 128 66"/>
+                  <path d="M -8 79 C 21 65, 41 95, 65 97 C 89 99, 105 75, 128 69"/>
+                </g>
+                <!-- Monogramme géométrique DEX cyan vif -->
+                <g fill="#06b6d4">
+                  <!-- Lettre D avec encoche horizontale sur la barre verticale -->
+                  <path d="M 14 42 H 26 C 37 42, 43 49, 43 60 C 43 71, 37 78, 26 78 H 14 V 62.5 H 21 V 70.5 H 25.5 C 31.5 70.5, 35 66.5, 35 60 C 35 53.5, 31.5 49.5, 25.5 49.5 H 21 V 58.5 H 14 Z"/>
+                  <!-- Lettre E avec barre médiane légèrement plus courte -->
+                  <path d="M 48 42 H 71 V 49.5 H 55.5 V 56.2 H 67.5 V 63.5 H 55.5 V 70.5 H 71 V 78 H 48 Z"/>
+                  <!-- Lettre X avec branche montante droite légèrement plus haute et évasée -->
+                  <polygon points="75,42 84.5,42 91.5,53.5 99.5,40.5 109,40.5 96.5,59.5 108.5,78 99,78 91.5,65.5 83.5,78 74,78 86.5,59.5"/>
+                </g>
               </svg>
             </div>
             <div>
@@ -2397,9 +2417,28 @@
       reportArea.innerHTML = `
         <div style="font-family: Inter, sans-serif; color: #0f172a;">
           <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #0284c7; padding-bottom:12px; margin-bottom:20px;">
-            <div>
-              <h1 style="font-size:20px; font-weight:800; margin:0;">RAPPORT D'INTERVENTION & RELEVÉ GTB</h1>
-              <p style="font-size:12px; color:#475569; margin:4px 0 0 0;">Supervision GTB Frigorifique Réversible — Dexforma • PAC Air/Eau R32 (240 kW)</p>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:44px; height:44px; border-radius:10px; background:#000000; overflow:hidden; flex-shrink:0;">
+                <svg width="44" height="44" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="120" height="120" fill="#000000"/>
+                  <g fill="none" stroke="#00b4d8" stroke-width="0.7" opacity="0.6">
+                    <path d="M -8 58 C 14 44, 34 74, 58 76 C 82 78, 98 54, 128 48"/>
+                    <path d="M -8 63 C 16 49, 36 79, 60 81 C 84 83, 100 59, 128 53"/>
+                    <path d="M -8 68 C 18 54, 38 84, 62 86 C 86 88, 102 64, 128 58"/>
+                    <path d="M -8 73 C 20 59, 40 89, 64 91 C 88 93, 104 69, 128 63"/>
+                    <path d="M -8 78 C 22 64, 42 94, 66 96 C 90 98, 106 74, 128 68"/>
+                  </g>
+                  <g fill="#06b6d4">
+                    <path d="M 14 42 H 26 C 37 42, 43 49, 43 60 C 43 71, 37 78, 26 78 H 14 V 62.5 H 21 V 70.5 H 25.5 C 31.5 70.5, 35 66.5, 35 60 C 35 53.5, 31.5 49.5, 25.5 49.5 H 21 V 58.5 H 14 Z"/>
+                    <path d="M 48 42 H 71 V 49.5 H 55.5 V 56.2 H 67.5 V 63.5 H 55.5 V 70.5 H 71 V 78 H 48 Z"/>
+                    <polygon points="75,42 84.5,42 91.5,53.5 99.5,40.5 109,40.5 96.5,59.5 108.5,78 99,78 91.5,65.5 83.5,78 74,78 86.5,59.5"/>
+                  </g>
+                </svg>
+              </div>
+              <div>
+                <h1 style="font-size:20px; font-weight:800; margin:0;">RAPPORT D'INTERVENTION & RELEVÉ GTB</h1>
+                <p style="font-size:12px; color:#475569; margin:4px 0 0 0;">Supervision GTB Frigorifique Réversible — Dexforma • PAC Air/Eau R32 (240 kW)</p>
+              </div>
             </div>
             <div style="text-align:right; font-size:12px; font-family:monospace;">
               <div><strong>Date :</strong> ${nowStr}</div>
