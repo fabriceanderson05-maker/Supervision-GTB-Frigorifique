@@ -559,8 +559,6 @@
                     <line x1="695.3" y1="198.5" x2="724.7" y2="181.5" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round"/>
                     <circle cx="710" cy="190" r="5.5" fill="#0b0f17" stroke="#06b6d4" stroke-width="1.8"/>
                   </g>
-                  <!-- Repère normalisé de sens de flux (flèche vers la droite) -->
-                  <polygon id="pumpFlowArrow" points="725,185 733,190 725,195" fill="#10b981"/>
                   <text x="710" y="154" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">Pompe P1</text>
                   <text id="svgPumpFlow" x="710" y="231" text-anchor="middle" fill="#10b981" font-size="10.5" font-family="JetBrains Mono" font-weight="700">34.5 m³/h</text>
                 </g>
@@ -1684,7 +1682,6 @@
       const pumpImpeller = document.getElementById('pumpImpeller');
       const pumpBodyCircle = document.getElementById('pumpBodyCircle');
       const pumpHalo = document.getElementById('pumpHalo');
-      const pumpFlowArrow = document.getElementById('pumpFlowArrow');
       const svgPumpFlow = document.getElementById('svgPumpFlow');
       const isPumpRunning = state.waterFlow > 0 && state.activeFault !== 'FLOW_LOSS';
 
@@ -1695,7 +1692,6 @@
         pumpBodyCircle.setAttribute('stroke', '#06b6d4');
         pumpHalo.setAttribute('stroke', '#06b6d4');
         pumpHalo.setAttribute('opacity', '0.65');
-        pumpFlowArrow.setAttribute('fill', '#10b981');
         pumpImpeller.querySelectorAll('line').forEach(l => l.setAttribute('stroke', '#38bdf8'));
         svgPumpFlow.textContent = `${state.waterFlow} m³/h`;
         svgPumpFlow.setAttribute('fill', '#10b981');
@@ -1704,7 +1700,6 @@
         pumpBodyCircle.setAttribute('stroke', '#ef4444');
         pumpHalo.setAttribute('stroke', '#ef4444');
         pumpHalo.setAttribute('opacity', '0.9');
-        pumpFlowArrow.setAttribute('fill', '#ef4444');
         pumpImpeller.querySelectorAll('line').forEach(l => l.setAttribute('stroke', '#ef4444'));
         svgPumpFlow.textContent = 'ARRÊT / DÉFAUT';
         svgPumpFlow.setAttribute('fill', '#ef4444');
